@@ -1,0 +1,9 @@
+node_modules
+.git
+.gitignore
+.assetsignore
+wrangler.jsonc
+package.json
+package-lock.json
+firestore.rules
+브랜드-본질-홈페이지-레퍼런스.md

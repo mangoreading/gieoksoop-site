@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>계정 확인 — 기억숲</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="icon" href="img/apple-touch-icon.png">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<nav class="sitenav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/logo-mark.png" alt="기억숲"></a>
+    <div class="links">
+      <a href="guide.html" class="hide-mobile">가이드</a>
+      <a href="pricing.html">가격</a>
+      <a href="login.html" data-auth="guest">로그인</a>
+      <a href="account.html" data-auth="user" style="display:none">내 계정</a>
+      <div class="lang-toggle">
+        <button type="button" data-lang-btn="ko" class="active">KR</button>
+        <button type="button" data-lang-btn="en">EN</button>
+        <span class="lang-toast"></span>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<section class="center-card" style="padding:64px 0 80px;">
+  <div class="wrap">
+    <div class="card" id="actionCard">
+      <h2>확인하고 있어요...</h2>
+      <p class="desc">잠시만 기다려 주세요.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="brand">기억숲 — LIFE ARCHIVE</div>
+  <div>&copy; 2026 기억숲. All rights reserved.</div>
+  <div class="foot-links">
+    <a href="guide.html">사용가이드</a>
+    <a href="notice.html">공지사항</a>
+    <a href="terms.html">이용약관</a>
+    <a href="privacy.html">개인정보처리방침</a>
+  </div>
+  <div class="foot-biz">
+    스콜레에듀케이션 · 대표 : 김미정 · 사업자등록번호 : 262-57-01028<br>
+    서울특별시 양천구 목동동로 293 현대41타워 22층<br>
+    이메일 : <a href="mailto:support@gieoksoop.com">support@gieoksoop.com</a> · 통신판매업신고번호 : 123-4567-890
+  </div>
+</footer>
+
+<script type="module">
+  import { completeEmailVerification, verifyResetCode, completePasswordReset, friendlyAuthError, watchAuthForNav } from './js/auth.js';
+  import { initLangToggle } from './js/i18n.js';
+
+  watchAuthForNav();
+  initLangToggle();
+
+  const card = document.getElementById('actionCard');
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get('mode');
+  const oobCode = params.get('oobCode');
+
+  async function run() {
+    if (!oobCode) {
+      renderUnknown();
+      return;
+    }
+    if (mode === 'verifyEmail') {
+      await handleVerifyEmail();
+    } else if (mode === 'resetPassword') {
+      await handleResetPassword();
+    } else {
+      renderUnknown();
+    }
+  }
+
+  async function handleVerifyEmail() {
+    try {
+      await completeEmailVerification(oobCode);
+      card.innerHTML = `
+        <h2>이메일 인증이 완료됐어요</h2>
+        <p class="desc">이제 기억숲의 모든 기능을 이용할 수 있어요.</p>
+        <a class="btn btn-primary btn-block" href="account.html">내 계정으로 이동</a>
+      `;
+    } catch (err) {
+      card.innerHTML = `
+        <h2>인증에 실패했어요</h2>
+        <p class="desc">${esc(friendlyAuthError(err))}</p>
+        <a class="btn btn-outline btn-block" href="account.html">내 계정에서 다시 시도하기</a>
+      `;
+    }
+  }
+
+  async function handleResetPassword() {
+    let email;
+    try {
+      email = await verifyResetCode(oobCode);
+    } catch (err) {
+      card.innerHTML = `
+        <h2>링크가 만료됐거나 유효하지 않아요</h2>
+        <p class="desc">${esc(friendlyAuthError(err))}</p>
+        <a class="btn btn-outline btn-block" href="forgot-password.html">재설정 링크 다시 받기</a>
+      `;
+      return;
+    }
+    renderResetForm(email);
+  }
+
+  function renderResetForm(email) {
+    card.innerHTML = `
+      <h2>새 비밀번호 설정</h2>
+      <p class="desc"><strong>${esc(email)}</strong> 계정의 새 비밀번호를 입력해 주세요.</p>
+      <div class="form-error" id="errorBox"></div>
+      <form id="pwForm">
+        <div class="form-field">
+          <label for="pw1">새 비밀번호</label>
+          <input type="password" id="pw1" autocomplete="new-password" minlength="6" required>
+        </div>
+        <div class="form-field">
+          <label for="pw2">새 비밀번호 확인</label>
+          <input type="password" id="pw2" autocomplete="new-password" minlength="6" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block" id="submitBtn">비밀번호 변경</button>
+      </form>
+    `;
+
+    const pwForm = document.getElementById('pwForm');
+    const errorBox = document.getElementById('errorBox');
+    const submitBtn = document.getElementById('submitBtn');
+
+    pwForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorBox.style.display = 'none';
+      const pw1 = document.getElementById('pw1').value;
+      const pw2 = document.getElementById('pw2').value;
+
+      if (pw1 !== pw2) {
+        errorBox.textContent = '비밀번호가 서로 일치하지 않아요.';
+        errorBox.style.display = 'block';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = '변경 중...';
+      try {
+        await completePasswordReset(oobCode, pw1);
+        card.innerHTML = `
+          <h2>비밀번호가 변경됐어요</h2>
+          <p class="desc">새 비밀번호로 로그인해 주세요.</p>
+          <a class="btn btn-primary btn-block" href="login.html">로그인하러 가기</a>
+        `;
+      } catch (err) {
+        errorBox.textContent = friendlyAuthError(err);
+        errorBox.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = '비밀번호 변경';
+      }
+    });
+  }
+
+  function renderUnknown() {
+    card.innerHTML = `
+      <h2>잘못된 링크예요</h2>
+      <p class="desc">유효하지 않은 요청이에요. 메일에 있는 링크를 다시 확인해 주세요.</p>
+      <a class="btn btn-outline btn-block" href="index.html">홈으로</a>
+    `;
+  }
+
+  run();
+</script>
+
+</body>
+</html>

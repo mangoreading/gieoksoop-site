@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사용가이드 — 기억숲</title>
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="icon" href="img/apple-touch-icon.png">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<nav class="sitenav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/logo-mark.png" alt="기억숲"></a>
+    <div class="links">
+      <a href="guide.html" class="hide-mobile">가이드</a>
+      <a href="pricing.html">가격</a>
+      <a href="login.html" data-auth="guest">로그인</a>
+      <a href="account.html" data-auth="user" style="display:none">내 계정</a>
+      <div class="lang-toggle">
+        <button type="button" data-lang-btn="ko" class="active">KR</button>
+        <button type="button" data-lang-btn="en">EN</button>
+        <span class="lang-toast"></span>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="page-head">
+  <h1>기억숲 사용가이드</h1>
+  <p>설치부터 인생 챕터를 완성하기까지, 기억숲의 주요 기능을 순서대로 안내해드려요.</p>
+</div>
+
+<section style="padding-top:24px;">
+  <div class="wrap-narrow">
+    <div id="guideToc"></div>
+    <div id="guideSections"><p style="text-align:center;color:var(--ink-faint);padding:40px 0;">불러오는 중...</p></div>
+  </div>
+</section>
+
+<footer>
+  <div class="brand">기억숲 — LIFE ARCHIVE</div>
+  <div>&copy; 2026 기억숲. All rights reserved.</div>
+  <div class="foot-links">
+    <a href="guide.html">사용가이드</a>
+    <a href="notice.html">공지사항</a>
+    <a href="terms.html">이용약관</a>
+    <a href="privacy.html">개인정보처리방침</a>
+  </div>
+  <div class="foot-biz">
+    스콜레에듀케이션 · 대표 : 김미정 · 사업자등록번호 : 262-57-01028<br>
+    서울특별시 양천구 목동동로 293 현대41타워 22층<br>
+    이메일 : <a href="mailto:support@gieoksoop.com">support@gieoksoop.com</a> · 통신판매업신고번호 : 123-4567-890
+  </div>
+</footer>
+
+<script type="module">
+  import { watchAuthForNav, db } from './js/auth.js';
+  import { initLangToggle } from './js/i18n.js';
+  import { collection, getDocs, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+  watchAuthForNav();
+  initLangToggle();
+
+  // 관리자 화면(가이드 관리)에서 아직 아무 것도 등록하지 않았거나, Firestore를 못 불러오는
+  // 만일의 경우를 대비한 대체 콘텐츠. 평소에는 Firestore의 guides 컬렉션 내용이 그대로 보인다.
+  const FALLBACK_SECTIONS = [
+    { anchor_id: 'start', title: '시작하기 — 사진 폴더 연결', badge: '', body: '기억숲을 처음 실행하면 온보딩 화면에서 사진·영상이 들어있는 폴더(내 컴퓨터의 폴더, 외장하드 등)를 연결합니다. 사진 파일은 옮기거나 복사되지 않고, 그 자리에 그대로 둔 채 기억숲이 분석만 합니다.\n\n폴더를 연결하면 스캔이 시작되고, 촬영 날짜(EXIF)·위치(GPS)·얼굴 정보를 분석해 사진들을 자동으로 사건(이벤트) 단위로 묶습니다. 사진이 많을수록 처음 스캔에는 시간이 걸릴 수 있어요.' },
+    { anchor_id: 'home', title: '홈 — 오늘의 기억', badge: '', body: '홈 화면은 "오늘 같은 날"의 과거 사진(온 디스 데이)과, 전체 인생을 한눈에 보는 라이프 그리드를 보여줍니다. 매일 조금씩 다른 기억을 마주치게 되는 진입점이에요.' },
+    { anchor_id: 'timeline', title: '타임라인 · 갤러리', badge: '', body: '타임라인은 사진을 시간순으로, 갤러리는 격자형으로 훑어볼 수 있는 화면입니다. 사진 한 장을 눌러 날짜를 수정하거나 캡션을 남길 수 있어요.' },
+    { anchor_id: 'people', title: '인물', badge: '', body: '얼굴 인식으로 사진 속 인물들을 자동으로 그룹화합니다. 인물에 이름을 붙이고, 같은 사람인데 다른 그룹으로 나뉜 경우 병합할 수 있어요. 잘못 인식된 인물은 숨기기, 병합 제안 확인/거절 등으로 정리할 수 있습니다.' },
+    { anchor_id: 'chapters', title: '인생 챕터', badge: '', body: '연도별·인물별·사건별로 인생 챕터 초안을 AI가 자동으로 만들어줍니다. 챕터 상세 화면에서 내용을 직접 다듬거나(생성/다듬기), 원하는 사진을 골라 넣을 수 있고, 완성된 챕터는 PDF로 내보낼 수 있어요.' },
+    { anchor_id: 'preserve', title: '영구보존 & 외부공유', badge: '중요', body: '평소에는 원본 사진이 삭제되거나 외장하드가 빠지면 그 사진의 미리보기도 함께 보이지 않게 됩니다(저장공간을 이중으로 쓰지 않기 위한 기본 동작). 정말 소중한 챕터는 편집 화면에서 "영구보존 & 외부공유"를 눌러두면, 그 챕터의 사진만 별도로 안전하게 복사해둬서 원본이 사라져도 계속 볼 수 있어요.\n\n가족·지인에게 챕터를 공유하고 싶다면, 먼저 이 영구보존을 켠 뒤 Claude와의 대화에서 "이 챕터 공유해줘"라고 요청하면 공유 링크를 받아 챕터 화면에 등록할 수 있습니다.' },
+    { anchor_id: 'etc', title: '즐겨찾기 · 검색 · 휴지통', badge: '', body: '마음에 드는 사진은 즐겨찾기로 따로 모아볼 수 있고, 날짜·인물·키워드로 검색할 수 있어요. 실수로 지운 항목은 휴지통에서 복구할 수 있습니다.' },
+    { anchor_id: 'settings', title: '설정', badge: '', body: '연결된 폴더 관리, 위치 기록(방문 장소 자동 인식) 연동, 얼굴 인식 다시 실행 등을 설정 화면에서 할 수 있어요.' },
+    { anchor_id: 'mobile', title: '폰에서 사진 가져오기', badge: '준비 중', body: '폰으로 찍은 사진을 앱 설치 없이, 같은 와이파이 안에서 QR코드 스캔만으로 PC의 기억숲으로 옮기는 기능을 준비하고 있어요. 출시되면 이 페이지에도 사용법을 추가할게요.' },
+  ];
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderGuide(sections) {
+    const toc = document.getElementById('guideToc');
+    const body = document.getElementById('guideSections');
+    toc.innerHTML = `
+      <div class="guide-toc">
+        <h2>목차</h2>
+        <ol>${sections.map((s) => `<li><a href="#${esc(s.anchor_id)}">${esc(s.title)}</a></li>`).join('')}</ol>
+      </div>`;
+    body.innerHTML = sections
+      .map(
+        (s, i) => `
+      <div class="guide-section" id="${esc(s.anchor_id)}">
+        <h2>${i + 1}. ${esc(s.title)} ${s.badge ? `<span class="badge-sm">${esc(s.badge)}</span>` : ''}</h2>
+        ${String(s.body || '').split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}
+      </div>`
+      )
+      .join('');
+  }
+
+  try {
+    const snap = await getDocs(query(collection(db, 'guides'), orderBy('order', 'asc')));
+    const sections = snap.docs.map((d) => d.data()).filter((s) => s.published !== false);
+    renderGuide(sections.length > 0 ? sections : FALLBACK_SECTIONS);
+  } catch (e) {
+    renderGuide(FALLBACK_SECTIONS);
+  }
+</script>
+
+</body>
+</html>

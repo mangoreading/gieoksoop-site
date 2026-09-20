@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>내 계정 — 기억숲</title>
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="icon" href="img/apple-touch-icon.png">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<nav class="sitenav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/logo-mark.png" alt="기억숲"></a>
+    <div class="links">
+      <a href="guide.html" class="hide-mobile">가이드</a>
+      <a href="pricing.html">가격</a>
+      <a href="login.html" data-auth="guest">로그인</a>
+      <a href="account.html" data-auth="user" style="display:none">내 계정</a>
+      <div class="lang-toggle">
+        <button type="button" data-lang-btn="ko" class="active">KR</button>
+        <button type="button" data-lang-btn="en">EN</button>
+        <span class="lang-toast"></span>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="page-head">
+  <h1>내 계정</h1>
+  <p>로그인 정보와 구독 상태를 확인할 수 있어요.</p>
+</div>
+
+<section style="padding-top:24px;">
+  <div class="wrap-narrow">
+    <div class="card" style="max-width:520px;text-align:left;">
+      <div class="account-row">
+        <span class="label">이름</span>
+        <span class="value" data-user-name>-</span>
+      </div>
+      <div class="account-row">
+        <span class="label">이메일</span>
+        <span class="value" id="userEmail">-</span>
+      </div>
+      <div class="account-row">
+        <span class="label">구독 상태</span>
+        <span class="status-pill">아직 구독 중이 아님</span>
+      </div>
+      <div class="account-row">
+        <span class="label">기억숲 앱</span>
+        <a href="pricing.html">가격/다운로드 보기 →</a>
+      </div>
+
+      <div class="subsection">
+        <h3>비밀번호 변경</h3>
+        <p class="desc">보안을 위해 현재 비밀번호를 입력한 뒤 새 비밀번호로 바꿀 수 있어요.</p>
+        <div class="form-error" id="pwError"></div>
+        <div class="form-success" id="pwSuccess"></div>
+        <form id="pwForm">
+          <div class="form-field">
+            <label for="currentPw">현재 비밀번호</label>
+            <input type="password" id="currentPw" autocomplete="current-password" required>
+          </div>
+          <div class="form-field">
+            <label for="newPw">새 비밀번호</label>
+            <input type="password" id="newPw" autocomplete="new-password" minlength="6" required>
+          </div>
+          <div class="form-field">
+            <label for="newPw2">새 비밀번호 확인</label>
+            <input type="password" id="newPw2" autocomplete="new-password" minlength="6" required>
+          </div>
+          <button type="submit" class="btn btn-outline btn-block" id="pwSubmitBtn">비밀번호 변경</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card" style="max-width:520px;text-align:left;display:none;" id="verifyCard">
+      <h2 style="margin-top:0;">이메일 인증이 필요해요</h2>
+      <p class="desc"><strong id="verifyEmailLabel">-</strong> 주소가 본인 이메일인지 확인이 필요해요. 이메일 인증을 마쳐야 기억숲의 모든 기능을 이용할 수 있어요.</p>
+      <div class="form-error" id="verifyError"></div>
+      <div class="form-success" id="verifySuccess"></div>
+      <button class="btn btn-primary btn-block" id="checkVerifiedBtn">인증 완료했어요 — 새로고침</button>
+      <button class="btn btn-outline btn-block" id="resendBtn" style="margin-top:10px;">인증 메일 다시 보내기</button>
+      <p class="form-note" id="resendHint" style="text-align:center;"></p>
+      <p style="text-align:center;margin-top:20px;">
+        <button type="button" id="verifyLogoutBtn" class="linklike">다른 계정으로 로그인</button>
+      </p>
+    </div>
+
+    <p style="text-align:center;margin-top:24px;" id="logoutPara">
+      <button class="btn btn-outline" id="logoutBtn">로그아웃</button>
+    </p>
+    <p style="text-align:center;font-size:13px;color:var(--ink-faint);margin-top:32px;" id="guestNotice">
+      로그인이 필요한 페이지예요. <a href="login.html">로그인하러 가기</a>
+    </p>
+    <p style="text-align:center;font-size:14px;color:var(--ink-faint);margin-top:32px;display:none;" id="pcCallbackNotice">
+      PC 앱에 로그인 정보를 전달하고 있어요... 완료되면 이 창은 닫으셔도 됩니다.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="brand">기억숲 — LIFE ARCHIVE</div>
+  <div>&copy; 2026 기억숲. All rights reserved.</div>
+  <div class="foot-links">
+    <a href="guide.html">사용가이드</a>
+    <a href="notice.html">공지사항</a>
+    <a href="terms.html">이용약관</a>
+    <a href="privacy.html">개인정보처리방침</a>
+  </div>
+  <div class="foot-biz">
+    스콜레에듀케이션 · 대표 : 김미정 · 사업자등록번호 : 262-57-01028<br>
+    서울특별시 양천구 목동동로 293 현대41타워 22층<br>
+    이메일 : <a href="mailto:support@gieoksoop.com">support@gieoksoop.com</a> · 통신판매업신고번호 : 123-4567-890
+  </div>
+</footer>
+
+<script type="module">
+  import { auth, logOut, watchAuthForNav, resendVerificationEmail, changePassword, friendlyAuthError } from './js/auth.js';
+  import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+  import { initLangToggle } from './js/i18n.js';
+
+  watchAuthForNav();
+  initLangToggle();
+
+  const card = document.querySelector('.card');
+  const verifyCard = document.getElementById('verifyCard');
+  const guestNotice = document.getElementById('guestNotice');
+  const pcCallbackNotice = document.getElementById('pcCallbackNotice');
+  const logoutPara = document.getElementById('logoutPara');
+  const verifyEmailLabel = document.getElementById('verifyEmailLabel');
+
+  // PC 앱 ↔ 웹서비스 로그인 연동(로컬 콜백 서버 방식).
+  // PC 앱이 시스템 브라우저로 이 페이지를 열 때 ?callback_port=<포트> 를 붙여서 보내면,
+  // 로그인 완료 후 Firebase ID 토큰/refresh 토큰을 http://localhost:<포트>/callback 으로 전달한다.
+  const params = new URLSearchParams(window.location.search);
+  const callbackPort = params.get('callback_port');
+  const isValidPort = !!callbackPort && /^\d{1,5}$/.test(callbackPort) && Number(callbackPort) > 0 && Number(callbackPort) < 65536;
+
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      document.getElementById('userEmail').textContent = user.email;
+
+      // 이메일 인증을 마치지 않은 계정은, PC 앱 연동 요청이더라도 먼저 인증부터 하도록 막는다.
+      if (!user.emailVerified) {
+        card.style.display = 'none';
+        logoutPara.style.display = 'none';
+        guestNotice.style.display = 'none';
+        pcCallbackNotice.style.display = 'none';
+        verifyCard.style.display = '';
+        verifyEmailLabel.textContent = user.email;
+        maybeAutoSendVerification(user);
+        return;
+      }
+      verifyCard.style.display = 'none';
+
+      if (isValidPort) {
+        card.style.display = 'none';
+        logoutPara.style.display = 'none';
+        guestNotice.style.display = 'none';
+        pcCallbackNotice.style.display = 'block';
+        try {
+          const idToken = await user.getIdToken();
+          const refreshToken = user.refreshToken;
+          const callbackUrl = `http://localhost:${callbackPort}/callback?token=${encodeURIComponent(idToken)}&refresh=${encodeURIComponent(refreshToken)}`;
+          window.location.href = callbackUrl;
+        } catch (e) {
+          pcCallbackNotice.textContent = 'PC 앱에 로그인 정보를 전달하지 못했어요. PC 앱이 켜져 있는지 확인하고 다시 시도해 주세요.';
+        }
+        return;
+      }
+
+      card.style.display = '';
+      logoutPara.style.display = '';
+      guestNotice.style.display = 'none';
+      pcCallbackNotice.style.display = 'none';
+    } else {
+      card.style.display = 'none';
+      logoutPara.style.display = 'none';
+      verifyCard.style.display = 'none';
+      pcCallbackNotice.style.display = 'none';
+      if (isValidPort) {
+        // 아직 로그인 전 — callback_port를 유지한 채 로그인 페이지로 이동
+        guestNotice.style.display = 'none';
+        window.location.href = 'login.html' + window.location.search;
+      } else {
+        guestNotice.style.display = 'block';
+      }
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await logOut();
+    window.location.href = 'index.html';
+  });
+
+  // ---------------- 이메일 인증 패널 ----------------
+  const verifyError = document.getElementById('verifyError');
+  const verifySuccess = document.getElementById('verifySuccess');
+  const checkVerifiedBtn = document.getElementById('checkVerifiedBtn');
+  const resendBtn = document.getElementById('resendBtn');
+  const resendHint = document.getElementById('resendHint');
+  let resendTimer = null;
+
+  document.getElementById('verifyLogoutBtn').addEventListener('click', async () => {
+    await logOut();
+    window.location.href = 'login.html';
+  });
+
+  checkVerifiedBtn.addEventListener('click', async () => {
+    verifyError.style.display = 'none';
+    verifySuccess.style.display = 'none';
+    checkVerifiedBtn.disabled = true;
+    checkVerifiedBtn.textContent = '확인 중...';
+    try {
+      await auth.currentUser.reload();
+      if (auth.currentUser.emailVerified) {
+        window.location.reload();
+        return;
+      }
+      verifyError.textContent = '아직 인증이 확인되지 않았어요. 메일함을 확인하고 링크를 눌러주세요.';
+      verifyError.style.display = 'block';
+    } catch (e) {
+      verifyError.textContent = friendlyAuthError(e);
+      verifyError.style.display = 'block';
+    } finally {
+      checkVerifiedBtn.disabled = false;
+      checkVerifiedBtn.textContent = '인증 완료했어요 — 새로고침';
+    }
+  });
+
+  function startResendCooldown(seconds) {
+    let remaining = seconds;
+    resendBtn.disabled = true;
+    resendHint.textContent = `${remaining}초 후 다시 보낼 수 있어요.`;
+    clearInterval(resendTimer);
+    resendTimer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        clearInterval(resendTimer);
+        resendBtn.disabled = false;
+        resendHint.textContent = '';
+      } else {
+        resendHint.textContent = `${remaining}초 후 다시 보낼 수 있어요.`;
+      }
+    }, 1000);
+  }
+
+  // 가입 시 인증 메일을 이미 받은 계정도 있지만(신규 가입), 그 이전에 만들어진 계정은
+  // 아직 한 번도 인증 메일을 받아본 적이 없을 수 있다. 이 화면에 처음 들어왔을 때
+  // (이번 브라우저 세션에서 아직 안 보냈다면) 자동으로 한 번 보내준다.
+  async function maybeAutoSendVerification(user) {
+    let key = null;
+    try {
+      key = 'gieoksoop_verify_sent_' + user.uid;
+      if (sessionStorage.getItem(key)) return;
+    } catch (e) {
+      // 세션스토리지를 못 쓰는 환경이면 그냥 매번 버튼으로만 보내도록 자동발송은 건너뜀
+      return;
+    }
+    try {
+      await resendVerificationEmail(user);
+      sessionStorage.setItem(key, '1');
+      verifySuccess.textContent = '인증 메일을 보냈어요.';
+      verifySuccess.style.display = 'block';
+      startResendCooldown(60);
+    } catch (e) {
+      // 자동 발송 실패는 조용히 무시 — "인증 메일 다시 보내기" 버튼으로 재시도할 수 있다.
+    }
+  }
+
+  resendBtn.addEventListener('click', async () => {
+    verifyError.style.display = 'none';
+    verifySuccess.style.display = 'none';
+    try {
+      await resendVerificationEmail(auth.currentUser);
+      verifySuccess.textContent = '인증 메일을 다시 보냈어요.';
+      verifySuccess.style.display = 'block';
+      startResendCooldown(60);
+    } catch (e) {
+      verifyError.textContent = friendlyAuthError(e);
+      verifyError.style.display = 'block';
+    }
+  });
+
+  // ---------------- 비밀번호 변경 ----------------
+  const pwForm = document.getElementById('pwForm');
+  const pwError = document.getElementById('pwError');
+  const pwSuccess = document.getElementById('pwSuccess');
+  const pwSubmitBtn = document.getElementById('pwSubmitBtn');
+
+  pwForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    pwError.style.display = 'none';
+    pwSuccess.style.display = 'none';
+
+    const currentPw = document.getElementById('currentPw').value;
+    const newPw = document.getElementById('newPw').value;
+    const newPw2 = document.getElementById('newPw2').value;
+
+    if (newPw !== newPw2) {
+      pwError.textContent = '새 비밀번호가 서로 일치하지 않아요.';
+      pwError.style.display = 'block';
+      return;
+    }
+    if (newPw === currentPw) {
+      pwError.textContent = '현재 비밀번호와 다른 비밀번호를 입력해 주세요.';
+      pwError.style.display = 'block';
+      return;
+    }
+
+    pwSubmitBtn.disabled = true;
+    pwSubmitBtn.textContent = '변경 중...';
+    try {
+      await changePassword(currentPw, newPw);
+      pwSuccess.textContent = '비밀번호를 변경했어요.';
+      pwSuccess.style.display = 'block';
+      pwForm.reset();
+    } catch (err) {
+      pwError.textContent = friendlyAuthError(err);
+      pwError.style.display = 'block';
+    } finally {
+      pwSubmitBtn.disabled = false;
+      pwSubmitBtn.textContent = '비밀번호 변경';
+    }
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,77 @@
+rules_version = '2';
+
+// Firebase 콘솔 > Firestore Database > 규칙 탭에 이 내용을 붙여넣어 배포하세요.
+//
+// 2026-09-17 업데이트: 관리자 화면(admin.gieoksoop.com) 추가로 아래 컬렉션이 새로 생겼습니다.
+//   - admins        : 관리자 계정 목록(uid를 문서ID로 사용). role 필드로 superadmin/admin 구분.
+//   - guides        : 사용가이드 섹션(공개 사이트 guide.html이 여기서 읽어옴)
+//   - notices       : 공지사항(공개 사이트 notice.html이 여기서 읽어옴)
+//   - system_config : 서비스 운영용 설정값(관리자만 열람 가능, 절대 공개 노출 금지)
+//
+// 핵심 원칙: 본인의 users/{내uid} 문서만 읽고 쓸 수 있음(다른 사용자 정보는 절대 볼 수 없음),
+//   단 admins 컬렉션에 자기 uid 문서가 있는 사람(=관리자)은 모든 회원 문서를 읽고 고객지원
+//   목적으로 구독상태를 고쳐줄 수 있음. superadmin만 관리자 계정 자체를 추가/변경/삭제할 수 있음.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'superadmin';
+    }
+
+    match /users/{userId} {
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.subscription_status == 'none';
+
+      allow read: if (request.auth != null && request.auth.uid == userId) || isAdmin();
+
+      // 본인은 subscription_status/plan을 못 바꾸지만(가짜 구독 방지), 관리자는 고객지원 목적으로
+      // 결제 확인 후 수동으로 구독상태를 바꿔줄 수 있어야 하므로 allow update를 하나 더 둔다
+      // (Firestore 규칙은 여러 allow 블록 중 하나라도 만족하면 허용).
+      allow update: if (request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.subscription_status == resource.data.subscription_status
+                    && request.resource.data.subscription_plan == resource.data.subscription_plan)
+                    || isAdmin();
+
+      allow delete: if false;
+    }
+
+    // 관리자 계정 자체. 문서ID = 그 관리자의 Firebase Auth uid.
+    // 최초 1명(첫 superadmin)은 이 규칙상 아무도 만들 수 없으므로, Firebase 콘솔에서
+    // 수동으로 딱 한 번 만들어줘야 한다(관리자 화면 안내 문서 참고).
+    match /admins/{uid} {
+      allow read: if isAdmin();
+      allow create, update: if isSuperAdmin();
+      // 마지막 안전장치: 아무리 superadmin이라도 "자기 자신"은 삭제할 수 없게 막아서
+      // 실수로 관리자가 0명이 되는 사고를 방지한다.
+      allow delete: if isSuperAdmin() && uid != request.auth.uid;
+    }
+
+    // 사용가이드 섹션 — 로그인 여부와 상관없이 누구나 읽을 수 있어야 공개 사이트에서 보여줄 수 있다.
+    match /guides/{sectionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 공지사항 — 마찬가지로 공개 읽기, 관리자만 작성/수정/삭제.
+    match /notices/{noticeId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 서비스 운영용 설정값(각종 key-value). 절대 공개되면 안 되므로 관리자만 읽고 쓸 수 있다.
+    match /system_config/{doc} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>공지사항 — 기억숲</title>
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="icon" href="img/apple-touch-icon.png">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<nav class="sitenav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/logo-mark.png" alt="기억숲"></a>
+    <div class="links">
+      <a href="guide.html" class="hide-mobile">가이드</a>
+      <a href="pricing.html">가격</a>
+      <a href="login.html" data-auth="guest">로그인</a>
+      <a href="account.html" data-auth="user" style="display:none">내 계정</a>
+      <div class="lang-toggle">
+        <button type="button" data-lang-btn="ko" class="active">KR</button>
+        <button type="button" data-lang-btn="en">EN</button>
+        <span class="lang-toast"></span>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="page-head">
+  <h1>공지사항</h1>
+  <p>기억숲 서비스 소식과 안내를 전해드려요.</p>
+</div>
+
+<section style="padding-top:24px;">
+  <div class="wrap-narrow" id="noticeList">
+    <p style="text-align:center;color:var(--ink-faint);padding:40px 0;">불러오는 중...</p>
+  </div>
+</section>
+
+<footer>
+  <div class="brand">기억숲 — LIFE ARCHIVE</div>
+  <div>&copy; 2026 기억숲. All rights reserved.</div>
+  <div class="foot-links">
+    <a href="guide.html">사용가이드</a>
+    <a href="notice.html">공지사항</a>
+    <a href="terms.html">이용약관</a>
+    <a href="privacy.html">개인정보처리방침</a>
+  </div>
+  <div class="foot-biz">
+    스콜레에듀케이션 · 대표 : 김미정 · 사업자등록번호 : 262-57-01028<br>
+    서울특별시 양천구 목동동로 293 현대41타워 22층<br>
+    이메일 : <a href="mailto:support@gieoksoop.com">support@gieoksoop.com</a> · 통신판매업신고번호 : 123-4567-890
+  </div>
+</footer>
+
+<script type="module">
+  import { watchAuthForNav, db } from './js/auth.js';
+  import { initLangToggle } from './js/i18n.js';
+  import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+
+  watchAuthForNav();
+  initLangToggle();
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function fmtDate(ts) {
+    if (!ts || !ts.toDate) return '';
+    const d = ts.toDate();
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  const listEl = document.getElementById('noticeList');
+
+  try {
+    const snap = await getDocs(collection(db, 'notices'));
+    const notices = snap.docs
+      .map((d) => d.data())
+      .filter((n) => n.published !== false)
+      .sort((a, b) => {
+        if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+        const ta = a.created_at && a.created_at.toDate ? a.created_at.toDate().getTime() : 0;
+        const tb = b.created_at && b.created_at.toDate ? b.created_at.toDate().getTime() : 0;
+        return tb - ta;
+      });
+
+    if (notices.length === 0) {
+      listEl.innerHTML = `<p style="text-align:center;color:var(--ink-faint);padding:40px 0;">아직 등록된 공지사항이 없어요.</p>`;
+    } else {
+      listEl.innerHTML = notices
+        .map(
+          (n) => `
+        <div class="notice-item">
+          <h2>${n.pinned ? '<span class="badge-sm">고정</span>' : ''} ${esc(n.title)}</h2>
+          <div class="date">${fmtDate(n.created_at)}</div>
+          ${String(n.body || '').split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}
+        </div>`
+        )
+        .join('');
+    }
+  } catch (e) {
+    listEl.innerHTML = `<p style="text-align:center;color:var(--ink-faint);padding:40px 0;">공지사항을 불러오지 못했어요.</p>`;
+  }
+</script>
+
+</body>
+</html>
