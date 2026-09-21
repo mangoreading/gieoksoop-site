@@ -20,6 +20,9 @@
   --accent-strong:#b0552f;
   --accent-bg:rgba(203,107,69,.10);
   --danger:#b0403a;
+  --danger-bg:rgba(176,64,58,.10);
+  --ok:#3f7a53;
+  --ok-bg:rgba(63,122,83,.10);
   --font:'Pretendard Variable',-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","맑은 고딕",Roboto,sans-serif;
   --radius-lg:20px;
   --radius-md:12px;
@@ -318,6 +321,14 @@ form.signup button:hover{background:var(--accent-strong);}
 .account-row .label{color:var(--ink-faint);}
 .account-row .value{color:var(--ink);font-weight:600;}
 .status-pill{display:inline-block;font-size:12.5px;font-weight:700;padding:4px 12px;border-radius:999px;background:var(--accent-bg);color:var(--accent-strong);}
+.status-pill.active{background:var(--ok-bg);color:var(--ok);}
+.status-pill.canceled{background:var(--danger-bg);color:var(--danger);}
+
+.sub-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+.sub-table th{text-align:left;color:var(--ink-faint);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);}
+.sub-table td{padding:8px;border-bottom:1px solid var(--border);color:var(--ink-dim);}
+.sub-table tr:last-child td{border-bottom:none;}
+.sub-table td.empty{color:var(--ink-faint);padding:14px 8px;text-align:center;}
 
 /* ---------- Footer ---------- */
 footer{padding:40px 24px 56px;text-align:center;color:var(--ink-faint);font-size:13px;}

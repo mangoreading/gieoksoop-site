@@ -61,11 +61,27 @@
       </div>
       <div class="account-row">
         <span class="label">구독 상태</span>
-        <span class="status-pill">아직 구독 중이 아님</span>
+        <span class="status-pill" id="subStatusPill">확인 중...</span>
       </div>
-      <div class="account-row">
-        <span class="label">기억숲 앱</span>
-        <a href="pricing.html">구독결제 보기 →</a>
+
+      <div class="subsection" id="subSection">
+        <h3>구독 관리</h3>
+        <p class="desc" id="subDesc">구독 정보를 불러오는 중이에요...</p>
+        <div id="subActionArea"></div>
+
+        <div style="margin-top:24px;">
+          <p style="font-size:13.5px;font-weight:600;color:var(--ink-dim);margin:0 0 10px;">결제내역</p>
+          <div style="overflow-x:auto;">
+            <table class="sub-table">
+              <thead>
+                <tr><th>결제일</th><th>금액</th><th>플랜</th><th>상태</th></tr>
+              </thead>
+              <tbody id="paymentHistoryBody">
+                <tr><td colspan="4" class="empty">불러오는 중...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div class="subsection">
@@ -133,8 +149,9 @@
 </footer>
 
 <script type="module">
-  import { auth, logOut, watchAuthForNav, resendVerificationEmail, changePassword, friendlyAuthError } from './js/auth.js';
+  import { auth, db, logOut, watchAuthForNav, resendVerificationEmail, changePassword, friendlyAuthError } from './js/auth.js';
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+  import { doc, getDoc, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
 
   watchAuthForNav();
@@ -191,6 +208,7 @@
       logoutPara.style.display = '';
       guestNotice.style.display = 'none';
       pcCallbackNotice.style.display = 'none';
+      loadSubscriptionInfo(user);
     } else {
       card.style.display = 'none';
       logoutPara.style.display = 'none';
@@ -210,6 +228,87 @@
     await logOut();
     window.location.href = 'index.html';
   });
+
+  // ---------------- 구독 관리 ----------------
+  // 결제(PortOne) 연동 전까지는 관리자가 계좌이체 등을 확인하고 수동으로 구독상태/결제내역을
+  // 등록해주는 단계라, 여기서는 그 값을 읽어서 보여주기만 한다. 해지도 아직 셀프서비스가
+  // 아니라 고객센터로 이메일을 보내는 임시 동작이다.
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function fmtDate(ts) {
+    if (!ts || !ts.toDate) return '-';
+    const d = ts.toDate();
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  async function loadSubscriptionInfo(user) {
+    const pill = document.getElementById('subStatusPill');
+    const desc = document.getElementById('subDesc');
+    const actionArea = document.getElementById('subActionArea');
+    const historyBody = document.getElementById('paymentHistoryBody');
+
+    let status = 'none';
+    let plan = null;
+    try {
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      if (snap.exists()) {
+        status = snap.data().subscription_status || 'none';
+        plan = snap.data().subscription_plan || null;
+      }
+    } catch (e) {
+      // 못 불러와도 기본값(none)으로 조용히 진행
+    }
+
+    if (status === 'active') {
+      pill.textContent = '구독 중' + (plan ? ` (${plan})` : '');
+      pill.className = 'status-pill active';
+      desc.textContent = '현재 유료 구독을 이용 중이에요. 해지를 원하시면 아래 버튼으로 요청해주세요.';
+      actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn">구독 해지 요청하기</button>`;
+      document.getElementById('cancelSubBtn').addEventListener('click', () => {
+        const subject = encodeURIComponent('기억숲 구독 해지 요청');
+        const body = encodeURIComponent(`구독 해지를 요청합니다.\n가입 이메일: ${user.email}`);
+        window.location.href = `mailto:support@gieoksoop.com?subject=${subject}&body=${body}`;
+      });
+    } else if (status === 'canceled') {
+      pill.textContent = '해지됨';
+      pill.className = 'status-pill canceled';
+      desc.textContent = '구독이 해지된 상태예요. 언제든 다시 구독할 수 있어요.';
+      actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 구독하기 →</a>`;
+    } else {
+      pill.textContent = '구독 중이 아님';
+      pill.className = 'status-pill';
+      desc.textContent = '구독하면 사진 5,000개 이상 관리, 인생챕터 외부공유, 폰 자동 동기화를 쓸 수 있어요.';
+      actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">구독하러 가기 →</a>`;
+    }
+
+    try {
+      const psnap = await getDocs(query(collection(db, 'payments'), where('uid', '==', user.uid)));
+      const list = psnap.docs.map((d) => d.data());
+      list.sort((a, b) => {
+        const ta = a.paid_at && a.paid_at.toDate ? a.paid_at.toDate().getTime() : 0;
+        const tb = b.paid_at && b.paid_at.toDate ? b.paid_at.toDate().getTime() : 0;
+        return tb - ta;
+      });
+      if (list.length === 0) {
+        historyBody.innerHTML = `<tr><td colspan="4" class="empty">아직 결제내역이 없어요.</td></tr>`;
+      } else {
+        historyBody.innerHTML = list
+          .map(
+            (p) => `
+          <tr>
+            <td>${fmtDate(p.paid_at)}</td>
+            <td>${Number(p.amount || 0).toLocaleString()}원</td>
+            <td>${esc(p.plan || '-')}</td>
+            <td>${p.status === 'refunded' ? '환불' : '완료'}</td>
+          </tr>`
+          )
+          .join('');
+      }
+    } catch (e) {
+      historyBody.innerHTML = `<tr><td colspan="4" class="empty">결제내역을 불러오지 못했어요.</td></tr>`;
+    }
+  }
 
   // ---------------- 이메일 인증 패널 ----------------
   const verifyError = document.getElementById('verifyError');
