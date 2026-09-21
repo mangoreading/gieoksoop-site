@@ -278,6 +278,12 @@ form.signup button:hover{background:var(--accent-strong);}
 .plan .price{font-size:28px;font-weight:700;color:var(--ink);margin:0 0 4px;}
 .plan .price small{font-size:14px;font-weight:600;color:var(--ink-faint);}
 .plan .price-note{font-size:12.5px;color:var(--ink-faint);margin:0 0 20px;}
+.plan .price-options{margin:0 0 20px;}
+.plan .price-option{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-top:1px solid var(--border);}
+.plan .price-option:first-child{border-top:none;}
+.plan .price-option .label{font-size:13px;color:var(--ink-faint);}
+.plan .price-option .value{font-size:19px;font-weight:700;color:var(--ink);}
+.plan .price-option .value small{font-size:12px;font-weight:600;color:var(--ink-faint);}
 .plan ul{list-style:none;padding:0;margin:0 0 24px;font-size:14px;color:var(--ink-dim);}
 .plan ul li{padding:7px 0;border-top:1px solid var(--border);}
 .plan ul li:first-child{border-top:none;}

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>가격 — 기억숲</title>
+<title>구독결제 — 기억숲</title>
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="icon" href="img/apple-touch-icon.png">
 <link rel="stylesheet" href="css/site.css">
@@ -15,7 +15,7 @@
     <a class="brand" href="index.html"><img src="img/logo-mark.png" alt="기억숲"></a>
     <div class="links">
       <a href="guide.html" class="hide-mobile">가이드</a>
-      <a href="pricing.html">가격</a>
+      <a href="pricing.html">구독결제</a>
       <a href="login.html" data-auth="guest">로그인</a>
       <a href="account.html" data-auth="user" style="display:none">내 계정</a>
       <div class="lang-toggle">
@@ -28,45 +28,52 @@
 </nav>
 
 <div class="page-head">
-  <h1>사진 정리는 무료로, 완성된 산출물은 선택적으로</h1>
-  <p>핵심 기능은 계속 무료로 제공하고, 더 깊은 보존·복원·출력 기능은 유료 부가 서비스로 준비하고 있어요.</p>
+  <h1>사진 정리는 무료로, 더 넓게 쓰고 싶다면 구독으로</h1>
+  <p>핵심 기능은 계속 무료로 제공하고, 사진이 많거나 폰과의 자동 동기화가 필요하시면 구독결제로 확장할 수 있어요.</p>
 </div>
 
 <section>
   <div class="wrap">
     <div class="pricing-grid">
       <div class="plan">
-        <h3>무료 (Core)</h3>
+        <h3>무료</h3>
         <div class="price">₩0</div>
         <p class="price-note">기억숲 로컬 앱, 계속 무료</p>
         <ul>
           <li>사진·영상 폴더 연결 (원본은 컴퓨터 밖으로 안 나감)</li>
+          <li>사진·동영상 5,000개까지 관리</li>
           <li>시간·장소 기반 자동 이벤트 정리</li>
           <li>인물 인식 및 인물별 타임라인</li>
-          <li>인생 챕터 자동 초안 생성</li>
+          <li>인생 챕터 초안 자동 생성</li>
           <li>즐겨찾기 · 검색 · 인생 타임라인 보기</li>
         </ul>
         <a href="signup.html" class="btn btn-outline btn-block">무료로 시작하기</a>
       </div>
 
       <div class="plan highlight">
-        <h3>프리미엄 (준비 중)</h3>
-        <div class="price">연 $39~59<small> 참고가</small></div>
-        <p class="price-note">정확한 가격·결제 방식은 출시 전 공지됩니다</p>
+        <h3>유료</h3>
+        <div class="price-options">
+          <div class="price-option">
+            <span class="label">월간 결제</span>
+            <span class="value">3,000원<small>/월</small></span>
+          </div>
+          <div class="price-option">
+            <span class="label">연간 결제</span>
+            <span class="value">28,000원<small>/월</small></span>
+          </div>
+        </div>
         <ul>
-          <li>인생 챕터 PDF · 책 형태 출력</li>
-          <li>영구보존 저장공간 확장</li>
-          <li>(예정) 인화사진 스캔·복원 연동</li>
-          <li>(예정) 사용자 소유 클라우드 백업 연동</li>
+          <li>사진·동영상 5,000개 이상 관리</li>
+          <li>인생챕터 사용 및 외부공유</li>
+          <li>아이폰·Android 앱을 통해 폰의 사진·동영상 자동 동기화</li>
         </ul>
         <button class="btn btn-accent btn-block" id="subscribeBtn">구독 알림 받기</button>
       </div>
     </div>
 
     <p class="pricing-note">
-      기억숲은 사진을 서버에 보관하지 않는 로컬 우선 구조라, 스토리지 원가 부담 없이 가격을 정할 수 있어요.
-      가격은 Mylio($240/년), StoryWorth($59~199/년) 등 비교 제품 리서치를 바탕으로 한 참고치이며 아직 확정되지 않았습니다.
       결제(정기구독) 기능은 통신판매업 신고와 결제대행사 연동이 끝나는 대로 이 페이지에서 바로 이용할 수 있게 됩니다.
+      정확한 가격과 결제 방식은 오픈 전 이 페이지에 다시 안내드릴게요.
     </p>
   </div>
 </section>
@@ -104,7 +111,7 @@
       window.location.href = 'signup.html';
       return;
     }
-    alert('프리미엄 결제 연동을 준비 중이에요. 가입하신 이메일로 오픈 소식을 가장 먼저 보내드릴게요!');
+    alert('유료 구독 결제 연동을 준비 중이에요. 가입하신 이메일로 오픈 소식을 가장 먼저 보내드릴게요!');
   });
 </script>
 
