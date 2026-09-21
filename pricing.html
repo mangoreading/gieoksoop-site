@@ -34,47 +34,73 @@
 
 <section>
   <div class="wrap">
-    <div class="pricing-grid">
-      <div class="plan">
-        <h3>무료</h3>
-        <div class="price">₩0</div>
-        <p class="price-note">기억숲 로컬 앱, 계속 무료</p>
-        <ul>
-          <li>사진·영상 폴더 연결 (원본은 컴퓨터 밖으로 안 나감)</li>
-          <li>사진·동영상 5,000개까지 관리</li>
-          <li>시간·장소 기반 자동 이벤트 정리</li>
-          <li>인물 인식 및 인물별 타임라인</li>
-          <li>인생 챕터 초안 자동 생성</li>
-          <li>즐겨찾기 · 검색 · 인생 타임라인 보기</li>
-        </ul>
-        <a href="signup.html" class="btn btn-outline btn-block">무료로 시작하기</a>
-      </div>
-
-      <div class="plan highlight">
-        <h3>유료</h3>
-        <div class="price-options">
-          <div class="price-option">
-            <span class="label">월간 결제</span>
-            <span class="value">3,000원<small>/월</small></span>
-          </div>
-          <div class="price-option">
-            <span class="label">연간 결제</span>
-            <span class="value">28,000원<small>/년</small></span>
-          </div>
-        </div>
-        <p class="price-note">구독 기간이 끝나면 자동으로 결제·갱신됩니다. 월간 결제는 매달 자동으로 결제되어 별도로 재결제하지 않아도 계속 이용할 수 있어요.</p>
-        <ul>
-          <li>사진·동영상 5,000개 이상 관리</li>
-          <li>인생챕터 사용 및 외부공유</li>
-          <li>아이폰·Android 앱을 통해 폰의 사진·동영상 자동 동기화</li>
-        </ul>
-        <button class="btn btn-accent btn-block" id="subscribeBtn">구독 알림 받기</button>
-      </div>
+    <div class="pricing-table-wrap">
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>
+              <div class="plan-name">무료</div>
+              <div class="plan-price">₩0</div>
+              <div class="plan-price-sub">기억숲 로컬 앱, 계속 무료</div>
+              <a href="signup.html" class="btn btn-outline">무료로 시작하기</a>
+            </th>
+            <th>
+              <div class="plan-name">유료</div>
+              <div class="plan-price">월 3,000원</div>
+              <div class="plan-price-sub">연간 결제 시 28,000원/년</div>
+              <button class="btn btn-accent" id="subscribeBtn">구독 알림 받기</button>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>사진·영상 폴더 연결<span class="td-sub">원본은 컴퓨터 밖으로 안 나감</span></td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>사진·동영상 관리 개수</td>
+            <td>5,000개까지</td>
+            <td>5,000개 이상</td>
+          </tr>
+          <tr>
+            <td>시간·장소 기반 자동 이벤트 정리</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>인물 인식 및 인물별 타임라인</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>인생 챕터 초안 자동 생성</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>즐겨찾기 · 검색 · 인생 타임라인 보기</td>
+            <td class="yes">✓</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>인생챕터 외부공유</td>
+            <td class="no">–</td>
+            <td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>아이폰 · Android 앱 자동 동기화</td>
+            <td class="no">–</td>
+            <td class="yes">✓</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <p class="pricing-note">
-      결제(정기구독) 기능은 통신판매업 신고와 결제대행사 연동이 끝나는 대로 이 페이지에서 바로 이용할 수 있게 됩니다.
-      정확한 가격과 결제 방식은 오픈 전 이 페이지에 다시 안내드릴게요.
+      유료 구독은 결제 주기가 끝나면 자동으로 갱신·결제됩니다. 월간 결제는 매달 자동으로 결제되어 별도로 재결제하지 않아도 계속 이용할 수 있어요.<br>
+      결제(정기구독) 기능은 통신판매업 신고와 결제대행사 연동이 끝나는 대로 이 페이지에서 바로 이용할 수 있게 됩니다. 정확한 가격과 결제 방식은 오픈 전 이 페이지에 다시 안내드릴게요.
     </p>
   </div>
 </section>
