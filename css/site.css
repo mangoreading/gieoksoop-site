@@ -289,6 +289,15 @@ form.signup button:hover{background:var(--accent-strong);}
   .pricing-table td:first-child,.pricing-table th:first-child{min-width:150px;font-size:13px;}
 }
 
+/* ---------- Download ---------- */
+.download-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:760px;margin:0 auto;}
+.download-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:36px 28px;text-align:center;box-shadow:var(--shadow);}
+.download-card .os-icon{font-size:34px;margin-bottom:14px;}
+.download-card h3{font-size:19px;margin:0 0 6px;color:var(--navy);}
+.download-card .req{font-size:12.5px;color:var(--ink-faint);margin:0 0 22px;}
+.download-note{max-width:640px;margin:32px auto 0;text-align:center;color:var(--ink-faint);font-size:13px;line-height:1.7;}
+@media (max-width:640px){.download-grid{grid-template-columns:1fr;}}
+
 /* ---------- Legal pages ---------- */
 .legal{padding:16px 0 80px;}
 .legal-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:32px 36px;margin:0 0 20px;box-shadow:var(--shadow);}

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PC앱 다운로드 — 기억숲</title>
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="icon" href="img/apple-touch-icon.png">
+<link rel="stylesheet" href="css/site.css">
+</head>
+<body>
+
+<nav class="sitenav">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/logo-mark.png" alt="기억숲"></a>
+    <div class="links">
+      <a href="index.html" class="hide-mobile">서비스 소개</a>
+      <a href="guide.html" class="hide-mobile">사용가이드</a>
+      <a href="pricing.html">구독결제</a>
+      <a href="download.html" class="hide-mobile">다운로드</a>
+      <a href="login.html" data-auth="guest">로그인</a>
+      <a href="account.html" data-auth="user" style="display:none">내 계정</a>
+      <div class="lang-toggle">
+        <button type="button" data-lang-btn="ko" class="active">KR</button>
+        <button type="button" data-lang-btn="en">EN</button>
+        <span class="lang-toast"></span>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="page-head">
+  <h1>내 컴퓨터에 기억숲 설치하기</h1>
+  <p>Windows와 Mac에서 쓸 수 있는 PC 앱이에요. 사진 원본은 설치한 컴퓨터 밖으로 나가지 않아요.</p>
+</div>
+
+<section style="padding-top:24px;">
+  <div class="wrap">
+    <div class="download-grid">
+      <div class="download-card">
+        <div class="os-icon">🪟</div>
+        <h3>Windows용</h3>
+        <p class="req">Windows 10 이상</p>
+        <a href="signup.html" class="btn btn-primary btn-block">출시 알림 받기</a>
+      </div>
+      <div class="download-card">
+        <div class="os-icon">🍎</div>
+        <h3>Mac(아이맥)용</h3>
+        <p class="req">macOS 12 이상</p>
+        <a href="signup.html" class="btn btn-primary btn-block">출시 알림 받기</a>
+      </div>
+    </div>
+    <p class="download-note">
+      기억숲 PC 앱은 현재 출시를 준비하고 있어요. 위 버튼을 누르면 회원가입 화면으로 이동하고,
+      다운로드가 준비되는 대로 가입하신 이메일로 가장 먼저 안내드릴게요.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="brand">기억숲 — LIFE ARCHIVE</div>
+  <div>&copy; 2026 기억숲. All rights reserved.</div>
+  <div class="foot-links">
+    <a href="guide.html">사용가이드</a>
+    <a href="notice.html">공지사항</a>
+    <a href="terms.html">이용약관</a>
+    <a href="privacy.html">개인정보처리방침</a>
+  </div>
+  <div class="foot-biz">
+    스콜레에듀케이션 · 대표 : 김미정 · 사업자등록번호 : 262-57-01028<br>
+    서울특별시 양천구 목동동로 293 현대41타워 22층<br>
+    이메일 : <a href="mailto:support@gieoksoop.com">support@gieoksoop.com</a> · 통신판매업신고번호 : 123-4567-890
+  </div>
+</footer>
+
+<script type="module">
+  import { watchAuthForNav } from './js/auth.js';
+  import { initLangToggle } from './js/i18n.js';
+  watchAuthForNav();
+  initLangToggle();
+</script>
+
+</body>
+</html>
