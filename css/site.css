@@ -250,7 +250,7 @@ form.signup button:hover{background:var(--accent-strong);}
 #guideSections{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow);padding:8px 36px;}
 .guide-section{padding:28px 0;border-bottom:1px solid var(--border);}
 .guide-section:last-of-type{border-bottom:none;}
-.guide-section h2{font-size:20px;color:var(--navy);margin:0 0 14px;padding-bottom:12px;border-bottom:2px solid rgba(203,107,69,.22);display:flex;align-items:center;gap:10px;}
+.guide-section h2{font-size:20px;color:var(--navy);margin:0 0 14px;display:flex;align-items:center;gap:10px;}
 @media (max-width:640px){#guideSections{padding:4px 20px;}}
 .guide-section .badge-sm{font-size:11px;font-weight:700;background:var(--accent-bg);color:var(--accent-strong);border-radius:999px;padding:3px 10px;letter-spacing:.02em;}
 .guide-section p{color:var(--ink-dim);font-size:15px;margin:10px 0;}
@@ -313,6 +313,19 @@ footer .foot-links a:hover{color:var(--ink-dim);text-decoration:underline;}
 footer .foot-biz{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;line-height:1.8;color:var(--ink-faint);}
 footer .foot-biz a{color:var(--ink-faint);text-decoration:underline;}
 footer .foot-biz a:hover{color:var(--ink-dim);}
+
+/* ---------- PC 앱 로그인 팝업 모드 (2026.09.21) ----------
+   PC 앱이 로그인/가입/계정 페이지를 ?callback_port=<포트> 로 열 때
+   (별도 작은 브라우저 창, 480x560) 각 페이지 <head>의 인라인 스크립트가
+   html에 popup-mode 클래스를 붙인다. 그 창 안에서는 네비/푸터처럼 필요
+   없는 요소를 숨기고 안쪽 여백을 줄여서, 가로/세로 스크롤 없이 로그인
+   카드만 딱 맞게 보이도록 한다. */
+html.popup-mode .sitenav{display:none;}
+html.popup-mode footer{display:none;}
+html.popup-mode .center-card{padding:32px 0 !important;}
+html.popup-mode section{padding:20px 0;}
+html.popup-mode .page-head{padding:24px 24px 4px;}
+
 
 @media (max-width: 720px){
   .steps, .pillars, .pricing-grid{grid-template-columns:1fr;}
