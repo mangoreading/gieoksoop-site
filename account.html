@@ -50,7 +50,7 @@
 
 <section style="padding-top:24px;">
   <div class="wrap-narrow">
-    <div class="card" style="max-width:520px;text-align:left;">
+    <div class="card" style="max-width:640px;text-align:left;">
       <div class="account-row">
         <span class="label">이름</span>
         <span class="value" data-user-name>-</span>
@@ -85,6 +85,15 @@
       </div>
 
       <div class="subsection">
+        <h3>비밀번호</h3>
+        <p class="desc">보안을 위해 비밀번호를 주기적으로 변경해주세요.</p>
+        <button type="button" class="btn btn-outline btn-block" id="openPwModalBtn">비밀번호 변경</button>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="pwModalOverlay">
+      <div class="modal-box">
+        <button type="button" class="modal-close" id="pwModalCloseBtn" aria-label="닫기">&times;</button>
         <h3>비밀번호 변경</h3>
         <p class="desc">보안을 위해 현재 비밀번호를 입력한 뒤 새 비밀번호로 바꿀 수 있어요.</p>
         <div class="form-error" id="pwError"></div>
@@ -399,11 +408,27 @@
     }
   });
 
-  // ---------------- 비밀번호 변경 ----------------
+  // ---------------- 비밀번호 변경 (모달) ----------------
   const pwForm = document.getElementById('pwForm');
   const pwError = document.getElementById('pwError');
   const pwSuccess = document.getElementById('pwSuccess');
   const pwSubmitBtn = document.getElementById('pwSubmitBtn');
+  const pwModalOverlay = document.getElementById('pwModalOverlay');
+
+  function openPwModal() {
+    pwModalOverlay.classList.add('open');
+  }
+  function closePwModal() {
+    pwModalOverlay.classList.remove('open');
+    pwError.style.display = 'none';
+    pwSuccess.style.display = 'none';
+    pwForm.reset();
+  }
+  document.getElementById('openPwModalBtn').addEventListener('click', openPwModal);
+  document.getElementById('pwModalCloseBtn').addEventListener('click', closePwModal);
+  pwModalOverlay.addEventListener('click', (e) => {
+    if (e.target === pwModalOverlay) closePwModal();
+  });
 
   pwForm.addEventListener('submit', async (e) => {
     e.preventDefault();
