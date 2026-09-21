@@ -342,7 +342,7 @@ form.signup button:hover{background:var(--accent-strong);}
 /* ---------- Footer (mangoreading.com 포맷 참고, 색상은 기억숲 팔레트로) ---------- */
 footer{
   border-top:3px solid var(--accent);
-  background:var(--ink);
+  background:#000;
   padding:56px 24px 32px;
   color:rgba(255,255,255,.45);
 }
