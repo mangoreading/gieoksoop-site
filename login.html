@@ -112,8 +112,8 @@
     submitBtn.textContent = '로그인 중...';
 
     try {
-      await logIn(email, password);
-      window.location.href = 'account.html' + window.location.search;
+      const user = await logIn(email, password);
+      await redirectAfterAuth(user);
     } catch (err) {
       errorBox.textContent = friendlyAuthError(err);
       errorBox.style.display = 'block';
@@ -121,6 +121,32 @@
       submitBtn.textContent = '로그인';
     }
   });
+
+  // PC 앱 팝업으로 로그인했을 때, 예전엔 무조건 account.html로 이동한 뒤 그
+  // 페이지의 onAuthStateChanged가 다시 감지해서 localhost로 리다이렉트했다.
+  // 그러다 보니 account.html이 실제로 한 번 로드되면서(Firebase 재초기화 포함)
+  // "내 계정" 화면(제목·이메일 등)이 짧게라도 보였다가 사라지는 게 사용자
+  // 눈에 거슬렸다(2026.09.21 피드백: "닫히기 전에 전혀 무관한 페이지가 잠깐
+  // 보여진다"). 이메일 인증까지 이미 끝난 사용자라면 account.html을 아예
+  // 거치지 않고 여기서 바로 localhost 콜백으로 보내 그 깜빡임을 없앤다.
+  // (이메일 미인증 계정은 account.html의 인증 안내 화면이 실제로 필요하니
+  // 그 경우만 그대로 account.html로 보낸다.)
+  async function redirectAfterAuth(user) {
+    const params = new URLSearchParams(window.location.search);
+    const callbackPort = params.get('callback_port');
+    const isValidPort = !!callbackPort && /^\d{1,5}$/.test(callbackPort) && Number(callbackPort) > 0 && Number(callbackPort) < 65536;
+    if (isValidPort && user && user.emailVerified) {
+      try {
+        const idToken = await user.getIdToken();
+        const refreshToken = user.refreshToken;
+        window.location.href = `http://localhost:${callbackPort}/callback?token=${encodeURIComponent(idToken)}&refresh=${encodeURIComponent(refreshToken)}`;
+        return;
+      } catch (e) {
+        // 토큰을 못 받아오면 기존처럼 account.html에서 다시 시도
+      }
+    }
+    window.location.href = 'account.html' + window.location.search;
+  }
 </script>
 
 </body>
