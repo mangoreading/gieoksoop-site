@@ -65,6 +65,13 @@
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
+  // 관리자 화면에서 리치텍스트 에디터로 작성한 공지는 HTML로 저장되어 있어 그대로 보여주고,
+  // 예전 방식(문단 사이 빈 줄 구분의 일반 텍스트)으로 저장된 공지는 이전처럼 문단으로 변환한다.
+  function renderBody(body) {
+    const s = String(body == null ? '' : body);
+    if (/<[a-z][\s\S]*>/i.test(s)) return s;
+    return s.split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
+  }
   function fmtDate(ts) {
     if (!ts || !ts.toDate) return '';
     const d = ts.toDate();
@@ -94,7 +101,7 @@
         <div class="notice-item">
           <h2>${n.pinned ? '<span class="badge-sm">고정</span>' : ''} ${esc(n.title)}</h2>
           <div class="date">${fmtDate(n.created_at)}</div>
-          ${String(n.body || '').split(/\n\s*\n/).map((p) => `<p>${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}
+          ${renderBody(n.body)}
         </div>`
         )
         .join('');

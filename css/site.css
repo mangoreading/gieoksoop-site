@@ -263,6 +263,8 @@ form.signup button:hover{background:var(--accent-strong);}
 .notice-item h2{font-size:17px;color:var(--navy);margin:0 0 6px;display:flex;align-items:center;gap:8px;}
 .notice-item .date{font-size:12.5px;color:var(--ink-faint);margin-bottom:12px;}
 .notice-item p{color:var(--ink-dim);font-size:14.5px;margin:8px 0;}
+.notice-item ul,.notice-item ol{color:var(--ink-dim);font-size:14.5px;line-height:1.85;padding-left:22px;margin:8px 0;}
+.notice-item a{color:var(--accent-strong);text-decoration:underline;}
 
 /* ---------- Pricing ---------- */
 .pricing-table-wrap{max-width:760px;margin:0 auto;overflow-x:auto;-webkit-overflow-scrolling:touch;}

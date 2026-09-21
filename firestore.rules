@@ -8,6 +8,15 @@ rules_version = '2';
 //   - notices       : 공지사항(공개 사이트 notice.html이 여기서 읽어옴)
 //   - system_config : 서비스 운영용 설정값(관리자만 열람 가능, 절대 공개 노출 금지)
 //
+// 2026-09-21 업데이트: 관리자 화면에 "서비스 일시중지"와 "결제내역 수동 등록" 기능이 추가되어
+//   아래 내용이 바뀌었습니다.
+//   - users/{userId} : suspended(정지여부)/suspend_note(정지 메모)/suspended_at/suspended_by/
+//     suspended_resumed_at/suspended_resumed_by 필드가 새로 생김. subscription_status/plan과
+//     마찬가지로 본인이 직접 바꿀 수 없고 관리자만 바꿀 수 있어야 함(안 그러면 본인이 스스로
+//     정지를 풀 수 있게 되는 구멍이 생김).
+//   - payments      : 결제내역(PortOne 연동 전까지는 관리자가 계좌이체 확인 후 수동 등록).
+//     본인은 자기 결제내역만 읽을 수 있고, 쓰기는 관리자만 가능.
+//
 // 핵심 원칙: 본인의 users/{내uid} 문서만 읽고 쓸 수 있음(다른 사용자 정보는 절대 볼 수 없음),
 //   단 admins 컬렉션에 자기 uid 문서가 있는 사람(=관리자)은 모든 회원 문서를 읽고 고객지원
 //   목적으로 구독상태를 고쳐줄 수 있음. superadmin만 관리자 계정 자체를 추가/변경/삭제할 수 있음.
@@ -34,13 +43,16 @@ service cloud.firestore {
 
       allow read: if (request.auth != null && request.auth.uid == userId) || isAdmin();
 
-      // 본인은 subscription_status/plan을 못 바꾸지만(가짜 구독 방지), 관리자는 고객지원 목적으로
-      // 결제 확인 후 수동으로 구독상태를 바꿔줄 수 있어야 하므로 allow update를 하나 더 둔다
+      // 본인은 subscription_status/plan과 정지 관련 필드(suspended 등)를 못 바꾸지만
+      // (가짜 구독/셀프 정지해제 방지), 관리자는 고객지원 및 서비스 정지 목적으로
+      // 이 필드들을 바꿔줄 수 있어야 하므로 allow update를 하나 더 둔다
       // (Firestore 규칙은 여러 allow 블록 중 하나라도 만족하면 허용).
       allow update: if (request.auth != null
                     && request.auth.uid == userId
                     && request.resource.data.subscription_status == resource.data.subscription_status
-                    && request.resource.data.subscription_plan == resource.data.subscription_plan)
+                    && request.resource.data.subscription_plan == resource.data.subscription_plan
+                    && request.resource.data.get('suspended', false) == resource.data.get('suspended', false)
+                    && request.resource.data.get('suspend_note', null) == resource.data.get('suspend_note', null))
                     || isAdmin();
 
       allow delete: if false;
@@ -66,6 +78,13 @@ service cloud.firestore {
     // 공지사항 — 마찬가지로 공개 읽기, 관리자만 작성/수정/삭제.
     match /notices/{noticeId} {
       allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 결제내역 — PortOne 연동 전까지는 관리자가 계좌이체 등을 확인하고 수동으로 등록/삭제한다.
+    // 본인은 자기 uid로 된 결제내역만 조회할 수 있고(추후 "내 결제내역" 화면용), 쓰기는 관리자만.
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow write: if isAdmin();
     }
 
