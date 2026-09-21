@@ -7,6 +7,20 @@
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="icon" href="img/apple-touch-icon.png">
 <link rel="stylesheet" href="css/site.css">
+<script>
+  // PC 앱 로그인 팝업 감지(2026.09.21): PC 앱이 이 페이지를 ?callback_port=<포트>
+  // 로 열면(작은 브라우저 창), 렌더링 전에 최대한 빨리 popup-mode 클래스를 붙여서
+  // css/site.css의 팝업 전용 스타일(네비/푸터 숨김, 여백 축소)이 바로 적용되게 한다.
+  (function(){
+    try{
+      var params = new URLSearchParams(window.location.search);
+      var port = params.get('callback_port');
+      if(port && /^\d{1,5}$/.test(port) && Number(port) > 0 && Number(port) < 65536){
+        document.documentElement.classList.add('popup-mode');
+      }
+    }catch(e){}
+  })();
+</script>
 </head>
 <body>
 
