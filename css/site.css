@@ -247,10 +247,11 @@ form.signup button:hover{background:var(--accent-strong);}
 .guide-toc{background:var(--paper);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px 28px;margin:0 0 40px;}
 .guide-toc h2{font-size:15px;color:var(--navy);margin:0 0 12px;}
 .guide-toc ol{margin:0;padding-left:20px;color:var(--blue);font-size:14.5px;line-height:2;}
-.guide-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);padding:32px 36px;margin:0 0 20px;box-shadow:var(--shadow);}
-.guide-section:last-of-type{margin-bottom:0;}
+#guideSections{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow);padding:8px 36px;}
+.guide-section{padding:28px 0;border-bottom:1px solid var(--border);}
+.guide-section:last-of-type{border-bottom:none;}
 .guide-section h2{font-size:20px;color:var(--navy);margin:0 0 14px;padding-bottom:12px;border-bottom:2px solid rgba(203,107,69,.22);display:flex;align-items:center;gap:10px;}
-@media (max-width:640px){.guide-section{padding:24px 20px;}}
+@media (max-width:640px){#guideSections{padding:4px 20px;}}
 .guide-section .badge-sm{font-size:11px;font-weight:700;background:var(--accent-bg);color:var(--accent-strong);border-radius:999px;padding:3px 10px;letter-spacing:.02em;}
 .guide-section p{color:var(--ink-dim);font-size:15px;margin:10px 0;}
 .guide-section ul{color:var(--ink-dim);font-size:14.5px;padding-left:20px;margin:10px 0;}
