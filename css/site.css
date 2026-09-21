@@ -339,15 +339,32 @@ form.signup button:hover{background:var(--accent-strong);}
 .modal-box .modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:22px;line-height:1;color:var(--ink-faint);cursor:pointer;padding:4px;}
 .modal-box .modal-close:hover{color:var(--ink-dim);}
 
-/* ---------- Footer ---------- */
-footer{padding:40px 24px 56px;text-align:center;color:var(--ink-faint);font-size:13px;}
-footer .brand{font-weight:700;color:var(--ink-dim);margin-bottom:6px;}
-footer .foot-links{margin-top:10px;}
-footer .foot-links a{color:var(--ink-faint);text-decoration:none;margin:0 8px;}
-footer .foot-links a:hover{color:var(--ink-dim);text-decoration:underline;}
-footer .foot-biz{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);font-size:12px;line-height:1.8;color:var(--ink-faint);}
-footer .foot-biz a{color:var(--ink-faint);text-decoration:underline;}
-footer .foot-biz a:hover{color:var(--ink-dim);}
+/* ---------- Footer (mangoreading.com 포맷 참고, 색상은 기억숲 팔레트로) ---------- */
+footer{
+  border-top:3px solid var(--accent);
+  background:var(--ink);
+  padding:56px 24px 32px;
+  color:rgba(255,255,255,.45);
+}
+footer .foot-wrap{max-width:1040px;margin:0 auto;}
+footer .foot-grid{display:grid;gap:32px;}
+footer .foot-brand img{height:24px;width:auto;filter:brightness(0) invert(1);display:block;}
+footer .foot-brand p{margin:14px 0 0;font-size:13px;line-height:1.8;color:rgba(255,255,255,.4);}
+footer .foot-biz p{margin:0 0 7px;font-size:13px;line-height:1.8;color:rgba(255,255,255,.55);}
+footer .foot-biz p:last-child{margin-bottom:0;}
+footer .foot-biz p.name{font-size:14px;font-weight:700;color:#fff;margin-bottom:9px;}
+footer .foot-biz a{color:rgba(255,255,255,.7);text-decoration:none;}
+footer .foot-biz a:hover{color:var(--accent);}
+footer .foot-links{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 10px;font-size:13px;}
+footer .foot-links a{color:rgba(255,255,255,.7);text-decoration:none;transition:color .15s ease;}
+footer .foot-links a:hover{color:var(--accent);}
+footer .sep{color:rgba(255,255,255,.3);margin:0 1px;}
+footer .foot-bottom{margin-top:44px;padding-top:26px;border-top:1px solid rgba(255,255,255,.1);}
+footer .foot-bottom p{margin:0;font-size:12px;color:rgba(255,255,255,.35);}
+
+@media (min-width:768px){
+  footer .foot-grid{grid-template-columns:1fr minmax(0,2.4fr) max-content;align-items:start;gap:40px;}
+}
 
 /* ---------- PC 앱 로그인 팝업 모드 (2026.09.21) ----------
    PC 앱이 로그인/가입/계정 페이지를 ?callback_port=<포트> 로 열 때
