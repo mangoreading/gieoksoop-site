@@ -279,6 +279,10 @@ form.signup button:hover{background:var(--accent-strong);}
 .plan-name{font-size:16px;font-weight:700;color:var(--navy);margin:0 0 8px;}
 .plan-price{font-size:22px;font-weight:700;color:var(--ink);margin:0 0 2px;}
 .plan-price-sub{font-size:12px;color:var(--ink-faint);margin:0 0 14px;}
+.plan-toggle{display:inline-flex;align-items:center;gap:2px;background:#fff;border:1px solid var(--border);border-radius:999px;padding:3px;margin:0 0 12px;}
+.plan-toggle-btn{border:none;background:transparent;font-family:var(--font);font-size:12.5px;font-weight:700;padding:5px 14px;border-radius:999px;cursor:pointer;color:var(--ink-faint);}
+.plan-toggle-btn.active{background:var(--accent);color:#fff;}
+.plan-toggle-btn:disabled{opacity:.5;cursor:not-allowed;}
 .pricing-table thead .btn{display:inline-block;width:auto;padding:8px 22px;font-size:13px;}
 .pricing-table td.yes{color:var(--accent-strong);font-weight:700;font-size:16px;}
 .pricing-table td.no{color:var(--ink-faint);font-size:16px;}
