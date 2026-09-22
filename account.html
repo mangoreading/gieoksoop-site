@@ -248,9 +248,8 @@
   });
 
   // ---------------- 구독 관리 ----------------
-  // 결제(PortOne) 연동 전까지는 관리자가 계좌이체 등을 확인하고 수동으로 구독상태/결제내역을
-  // 등록해주는 단계라, 여기서는 그 값을 읽어서 보여주기만 한다. 해지도 아직 셀프서비스가
-  // 아니라 고객센터로 이메일을 보내는 임시 동작이다.
+  // 구독 상태/결제내역은 Firestore에서 읽어서 보여주고, 해지는 백엔드(/api/payments/cancel)를
+  // 직접 호출하는 셀프서비스다(다음 자동결제부터 청구되지 않도록 auto_renew를 끈다).
   function esc(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
@@ -281,12 +280,41 @@
     if (status === 'active') {
       pill.textContent = '구독 중' + (plan ? ` (${plan})` : '');
       pill.className = 'status-pill active';
-      desc.textContent = '현재 유료 구독을 이용 중이에요. 해지를 원하시면 아래 버튼으로 요청해주세요.';
-      actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn">구독 해지 요청하기</button>`;
-      document.getElementById('cancelSubBtn').addEventListener('click', () => {
-        const subject = encodeURIComponent('기억숲 구독 해지 요청');
-        const body = encodeURIComponent(`구독 해지를 요청합니다.\n가입 이메일: ${user.email}`);
-        window.location.href = `mailto:support@gieoksoop.com?subject=${subject}&body=${body}`;
+      desc.textContent = '현재 유료 구독을 이용 중이에요. 해지하면 다음 결제부터 자동으로 청구되지 않아요.';
+      actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn">구독 해지하기</button>`;
+      document.getElementById('cancelSubBtn').addEventListener('click', async () => {
+        const btn = document.getElementById('cancelSubBtn');
+        const confirmed = window.confirm('정말 구독을 해지하시겠어요? 다음 결제부터는 자동으로 청구되지 않아요.');
+        if (!confirmed) return;
+        const originalLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '해지 처리 중...';
+        try {
+          const idToken = await user.getIdToken();
+          const res = await fetch('/api/payments/cancel', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + idToken },
+          });
+          let data = null;
+          try {
+            data = await res.json();
+          } catch (e) {
+            // 응답 바디가 없어도 상태 코드로 판단
+          }
+          if (!res.ok || !data || !data.ok) {
+            alert('구독 해지 처리 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요.');
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+            return;
+          }
+          alert('구독이 해지됐어요. 다음 결제부터는 청구되지 않습니다.');
+          window.location.reload();
+        } catch (e) {
+          console.error(e);
+          alert('구독 해지 처리 중 문제가 발생했어요: ' + (e.message || e));
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+        }
       });
     } else if (status === 'canceled') {
       pill.textContent = '해지됨';
@@ -318,7 +346,7 @@
             <td>${fmtDate(p.paid_at)}</td>
             <td>${Number(p.amount || 0).toLocaleString()}원</td>
             <td>${esc(p.plan || '-')}</td>
-            <td>${p.status === 'refunded' ? '환불' : '완료'}</td>
+            <td>${p.status === 'refunded' ? '환불' : p.status === 'failed' ? '실패' : '완료'}</td>
           </tr>`
           )
           .join('');
