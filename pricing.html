@@ -51,7 +51,7 @@
               <div class="plan-name">유료</div>
               <div class="plan-price">월 3,000원</div>
               <div class="plan-price-sub">연간 결제 시 28,000원/년</div>
-              <button class="btn btn-accent" id="subscribeBtn">구독 알림 받기</button>
+              <button class="btn btn-accent" id="subscribeBtn">구독하기</button>
             </th>
           </tr>
         </thead>
@@ -132,6 +132,7 @@
     </div>
   </footer>
 
+<script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
 <script type="module">
   import { auth, watchAuthForNav } from './js/auth.js';
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
@@ -144,12 +145,56 @@
   let isLoggedIn = false;
   onAuthStateChanged(auth, (user) => { isLoggedIn = !!user; });
 
-  subscribeBtn.addEventListener('click', () => {
+  // 포트원(PortOne) V2 빌링키(정기결제용 카드 등록) 발급 -- 테스트 채널 연동 1단계.
+  // storeId/channelKey는 비밀값이 아니라 프론트엔드에 그대로 노출되는 공개 식별자.
+  const PORTONE_STORE_ID = 'store-9b3f8aa5-ea5a-4941-a366-56d89fdb6ed2';
+  const PORTONE_CHANNEL_KEY = 'channel-key-2c2cfc86-6056-47cb-a1da-9ca271f3035a';
+
+  subscribeBtn.addEventListener('click', async () => {
     if (!isLoggedIn) {
       window.location.href = 'signup.html';
       return;
     }
-    alert('유료 구독 결제 연동을 준비 중이에요. 가입하신 이메일로 오픈 소식을 가장 먼저 보내드릴게요!');
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const originalText = subscribeBtn.textContent;
+    subscribeBtn.disabled = true;
+    subscribeBtn.textContent = '카드 등록 창을 여는 중...';
+
+    try {
+      const issueResponse = await window.PortOne.requestIssueBillingKey({
+        storeId: PORTONE_STORE_ID,
+        channelKey: PORTONE_CHANNEL_KEY,
+        billingKeyMethod: 'CARD',
+        issueId: 'bk_' + user.uid + '_' + Date.now(),
+        issueName: '기억숲 구독 카드 등록',
+        customer: {
+          customerId: user.uid,
+          email: user.email || undefined,
+        },
+      });
+
+      if (!issueResponse) {
+        // 리디렉션 방식으로 넘어간 경우 등 -- 이 화면에서 더 할 일 없음.
+        return;
+      }
+      if (issueResponse.code) {
+        alert('카드 등록이 완료되지 않았어요: ' + (issueResponse.message || issueResponse.code));
+        return;
+      }
+
+      // TODO(다음 단계): 여기서 발급된 issueResponse.billingKey를 서버(/api/payments/...)로 전달해
+      // 정기결제를 등록하고 Firestore 구독 상태를 갱신한다. 서버 쪽 연동 전까지는 발급 확인만 한다.
+      console.log('[포트원 테스트] 빌링키 발급 성공:', issueResponse.billingKey);
+      alert('테스트 카드 등록이 완료됐어요! (빌링키 발급 확인)\n실제 정기결제 서버 연동은 다음 단계에서 이어집니다.');
+    } catch (e) {
+      console.error(e);
+      alert('카드 등록 중 문제가 발생했어요: ' + (e.message || e));
+    } finally {
+      subscribeBtn.disabled = false;
+      subscribeBtn.textContent = originalText;
+    }
   });
 </script>
 
