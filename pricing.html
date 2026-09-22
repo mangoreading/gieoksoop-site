@@ -36,27 +36,35 @@
 
 <section>
   <div class="wrap">
+    <div class="pricing-cards">
+      <div class="price-card">
+        <div class="plan-name">무료</div>
+        <div class="plan-price">₩0</div>
+        <div class="plan-price-sub">기억숲 로컬 앱, 계속 무료</div>
+        <a href="signup.html" class="btn btn-outline">무료로 시작하기</a>
+      </div>
+      <div class="price-card price-card-accent">
+        <div class="plan-name">유료 · 월간</div>
+        <div class="plan-price">월 3,000원</div>
+        <div class="plan-price-sub">매달 자동으로 결제돼요</div>
+        <button type="button" class="btn btn-accent subscribe-btn" data-plan="monthly">월 3,000원 구독하기</button>
+      </div>
+      <div class="price-card price-card-accent">
+        <div class="plan-badge">8,000원 절약</div>
+        <div class="plan-name">유료 · 연간</div>
+        <div class="plan-price">연 28,000원</div>
+        <div class="plan-price-sub">월 약 2,333원 꼴 · 연 1회 자동 결제</div>
+        <button type="button" class="btn btn-accent subscribe-btn" data-plan="annual">연 28,000원 구독하기</button>
+      </div>
+    </div>
+
     <div class="pricing-table-wrap">
       <table class="pricing-table">
         <thead>
           <tr>
             <th></th>
-            <th>
-              <div class="plan-name">무료</div>
-              <div class="plan-price">₩0</div>
-              <div class="plan-price-sub">기억숲 로컬 앱, 계속 무료</div>
-              <a href="signup.html" class="btn btn-outline">무료로 시작하기</a>
-            </th>
-            <th>
-              <div class="plan-name">유료</div>
-              <div class="plan-toggle" role="tablist" aria-label="결제 주기 선택">
-                <button type="button" class="plan-toggle-btn active" data-plan="monthly">월간</button>
-                <button type="button" class="plan-toggle-btn" data-plan="annual">연간</button>
-              </div>
-              <div class="plan-price" id="planPrice">월 3,000원</div>
-              <div class="plan-price-sub" id="planPriceSub">매달 자동으로 결제돼요</div>
-              <button class="btn btn-accent" id="subscribeBtn" data-plan="monthly">월 3,000원 구독하기</button>
-            </th>
+            <th>무료</th>
+            <th>유료</th>
           </tr>
         </thead>
         <tbody>
@@ -146,60 +154,23 @@
   watchAuthForNav();
   initLangToggle();
 
-  const subscribeBtn = document.getElementById('subscribeBtn');
+  const subscribeButtons = document.querySelectorAll('.subscribe-btn');
   let isLoggedIn = false;
   onAuthStateChanged(auth, (user) => { isLoggedIn = !!user; });
 
-  // 월간/연간 결제 주기 선택 토글 -- 선택에 따라 가격 표시와 구독 버튼이 바뀐다.
-  const planToggleBtns = document.querySelectorAll('.plan-toggle-btn');
-  const planPriceEl = document.getElementById('planPrice');
-  const planPriceSubEl = document.getElementById('planPriceSub');
   const PLAN_DISPLAY = {
-    monthly: {
-      price: '월 3,000원',
-      sub: '매달 자동으로 결제돼요',
-      btnLabel: '월 3,000원 구독하기',
-      issueName: '기억숲 구독 카드 등록 (월간)',
-    },
-    annual: {
-      price: '연 28,000원',
-      sub: '월간 결제보다 8,000원 저렴 · 연 1회 자동 결제',
-      btnLabel: '연 28,000원 구독하기',
-      issueName: '기억숲 구독 카드 등록 (연간)',
-    },
+    monthly: { issueName: '기억숲 구독 카드 등록 (월간)' },
+    annual: { issueName: '기억숲 구독 카드 등록 (연간)' },
   };
-  let selectedPlan = 'monthly';
-
-  function applyPlanDisplay(plan) {
-    selectedPlan = plan;
-    subscribeBtn.dataset.plan = plan;
-    planPriceEl.textContent = PLAN_DISPLAY[plan].price;
-    planPriceSubEl.textContent = PLAN_DISPLAY[plan].sub;
-    subscribeBtn.textContent = PLAN_DISPLAY[plan].btnLabel;
-    planToggleBtns.forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.plan === plan);
-    });
-  }
-
-  planToggleBtns.forEach((btn) => {
-    btn.addEventListener('click', () => applyPlanDisplay(btn.dataset.plan));
-  });
 
   // 포트원(PortOne) V2 빌링키(정기결제용 카드 등록) 발급 -- 테스트 채널 연동 1단계.
   // storeId/channelKey는 비밀값이 아니라 프론트엔드에 그대로 노출되는 공개 식별자.
   const PORTONE_STORE_ID = 'store-9b3f8aa5-ea5a-4941-a366-56d89fdb6ed2';
   const PORTONE_CHANNEL_KEY = 'channel-key-2c2cfc86-6056-47cb-a1da-9ca271f3035a';
 
-  subscribeBtn.addEventListener('click', async () => {
-    if (!isLoggedIn) {
-      window.location.href = 'signup.html';
-      return;
-    }
-    const user = auth.currentUser;
-    if (!user) return;
-
-    // 포트원(KG이니시스) 빌링키 발급에는 이름/휴대폰 번호가 필수라, 없으면 한 번만 물어보고
-    // Firestore에 저장해둔다(다음부터는 다시 안 물어봄).
+  // 포트원(KG이니시스) 빌링키 발급에는 이름/휴대폰 번호가 필수라, 없으면 한 번만 물어보고
+  // Firestore에 저장해둔다(다음부터는 다시 안 물어봄).
+  async function collectCustomerInfo(user) {
     let fullName = user.displayName || '';
     let phoneNumber = '';
     try {
@@ -215,14 +186,14 @@
 
     if (!fullName) {
       fullName = (window.prompt('결제 등록에 필요해요. 이름을 입력해 주세요.', '') || '').trim();
-      if (!fullName) return;
+      if (!fullName) return null;
     }
     if (!phoneNumber) {
       const rawPhone = window.prompt('결제 등록에 필요해요. 휴대폰 번호를 숫자만 입력해 주세요. (예: 01012345678)', '') || '';
       phoneNumber = rawPhone.replace(/[^0-9]/g, '');
       if (!/^01[0-9]{8,9}$/.test(phoneNumber)) {
         alert('휴대폰 번호 형식이 올바르지 않아요. 숫자만 입력해서 다시 시도해 주세요.');
-        return;
+        return null;
       }
       try {
         await updateDoc(doc(db, 'users', user.uid), { phone: phoneNumber });
@@ -230,11 +201,24 @@
         console.error(e);
       }
     }
+    return { fullName, phoneNumber };
+  }
 
-    const originalText = subscribeBtn.textContent;
-    subscribeBtn.disabled = true;
-    planToggleBtns.forEach((btn) => { btn.disabled = true; });
-    subscribeBtn.textContent = '카드 등록 창을 여는 중...';
+  async function startSubscribe(plan, btn) {
+    if (!isLoggedIn) {
+      window.location.href = 'signup.html';
+      return;
+    }
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const info = await collectCustomerInfo(user);
+    if (!info) return;
+    const { fullName, phoneNumber } = info;
+
+    const originalText = btn.textContent;
+    subscribeButtons.forEach((b) => { b.disabled = true; });
+    btn.textContent = '카드 등록 창을 여는 중...';
 
     try {
       const issueResponse = await window.PortOne.requestIssueBillingKey({
@@ -242,7 +226,7 @@
         channelKey: PORTONE_CHANNEL_KEY,
         billingKeyMethod: 'CARD',
         issueId: 'bk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-        issueName: PLAN_DISPLAY[selectedPlan].issueName,
+        issueName: PLAN_DISPLAY[plan].issueName,
         customer: {
           customerId: user.uid,
           fullName: fullName,
@@ -261,8 +245,7 @@
       }
 
       // 카드 등록(빌링키 발급)에 이어 서버에 첫 결제를 요청하고 구독 상태를 활성화한다.
-      // 위 토글에서 선택한 결제 주기(selectedPlan)를 그대로 서버에 전달한다.
-      subscribeBtn.textContent = '결제 처리 중...';
+      btn.textContent = '결제 처리 중...';
       const idToken = await user.getIdToken();
       const subscribeRes = await fetch('/api/payments/subscribe', {
         method: 'POST',
@@ -270,7 +253,7 @@
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + idToken,
         },
-        body: JSON.stringify({ billingKey: issueResponse.billingKey, plan: selectedPlan, fullName: fullName, phoneNumber: phoneNumber }),
+        body: JSON.stringify({ billingKey: issueResponse.billingKey, plan: plan, fullName: fullName, phoneNumber: phoneNumber }),
       });
       let subscribeData = null;
       try {
@@ -286,17 +269,20 @@
       if (subscribeData.warning) {
         alert(subscribeData.warning);
       } else {
-        alert('구독 결제가 완료됐어요! 매달 자동으로 결제됩니다.');
+        alert('구독 결제가 완료됐어요! ' + (plan === 'annual' ? '매년' : '매달') + ' 자동으로 결제됩니다.');
       }
       window.location.reload();
     } catch (e) {
       console.error(e);
       alert('카드 등록 중 문제가 발생했어요: ' + (e.message || e));
     } finally {
-      subscribeBtn.disabled = false;
-      planToggleBtns.forEach((btn) => { btn.disabled = false; });
-      subscribeBtn.textContent = originalText;
+      subscribeButtons.forEach((b) => { b.disabled = false; });
+      btn.textContent = originalText;
     }
+  }
+
+  subscribeButtons.forEach((btn) => {
+    btn.addEventListener('click', () => startSubscribe(btn.dataset.plan, btn));
   });
 </script>
 
