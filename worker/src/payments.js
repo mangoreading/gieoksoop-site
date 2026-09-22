@@ -1,0 +1,196 @@
+// 구독 결제(포트원 V2 빌링키) 관련 API 라우트.
+// - POST /api/payments/subscribe : 프론트에서 발급받은 빌링키로 첫 결제를 시도하고,
+//   성공하면 Firestore에 구독 상태 + 결제내역을 반영한다.
+// - POST /api/payments/cancel    : 구독 해지(자동결제 중단).
+// - POST /api/payments/webhook   : 포트원이 보내는 결제 결과 알림 수신.
+//
+// 아직 안 된 것(다음 단계): 매달 자동으로 다음 결제를 실행하는 정기 실행(cron)
+// 스케줄러. 오늘은 "빌링키로 실제 첫 결제가 되는지"까지 확인하는 범위.
+
+import { payWithBillingKey, getPayment, verifyPortOneWebhook } from "./portone.js";
+import { firestoreGetDoc, firestorePatchDoc, firestoreAddDoc, firestoreQuery } from "./firestore.js";
+
+const PLANS = {
+  monthly: { amount: 3000, orderName: "기억숲 구독 (월간)", periodMonths: 1 },
+  annual: { amount: 28000, orderName: "기억숲 구독 (연간)", periodMonths: 12 },
+};
+
+function addMonths(date, months) {
+  const d = new Date(date.getTime());
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
+
+function jsonResponse(obj, status = 200) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
+async function requireUser(request, env, verifyFirebaseIdToken) {
+  const authHeader = request.headers.get("Authorization") || "";
+  const match = authHeader.match(/^Bearer (.+)$/);
+  if (!match) return { error: jsonResponse({ error: "missing_token" }, 401) };
+  try {
+    const user = await verifyFirebaseIdToken(match[1], env.FIREBASE_PROJECT_ID);
+    return { user };
+  } catch (e) {
+    return { error: jsonResponse({ error: "invalid_token", detail: String(e.message || e) }, 401) };
+  }
+}
+
+export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "bad_json" }, 400);
+  }
+
+  const { billingKey, plan } = body || {};
+  if (!billingKey || !PLANS[plan]) {
+    return jsonResponse({ error: "invalid_params" }, 400);
+  }
+  const planInfo = PLANS[plan];
+  const paymentId = `sub_${user.uid}_${Date.now()}`;
+
+  let result;
+  try {
+    result = await payWithBillingKey(env, {
+      paymentId,
+      billingKey,
+      orderName: planInfo.orderName,
+      amount: planInfo.amount,
+      currency: "KRW",
+      customer: { id: user.uid, email: user.email || undefined },
+    });
+  } catch (e) {
+    return jsonResponse({ error: "portone_request_failed", detail: String(e.message || e) }, 502);
+  }
+
+  if (!result.ok) {
+    // 결제 실패 — 구독을 활성화하지 않고 실패 사유만 돌려준다.
+    const message = result.data && (result.data.message || result.data.pgMessage);
+    return jsonResponse({ error: "payment_failed", detail: message || result.data }, 402);
+  }
+
+  const now = new Date();
+  const nextBillingAt = addMonths(now, planInfo.periodMonths);
+
+  try {
+    await firestoreAddDoc(env, "payments", {
+      uid: user.uid,
+      amount: planInfo.amount,
+      plan,
+      method: "카드",
+      status: "paid",
+      paid_at: now,
+      created_at: now,
+      created_by: "portone",
+      payment_id: paymentId,
+    });
+    await firestorePatchDoc(env, `users/${user.uid}`, {
+      subscription_status: "active",
+      subscription_plan: plan,
+      billing_key: billingKey,
+      auto_renew: true,
+      billing_key_issued_at: now,
+      next_billing_at: nextBillingAt,
+    });
+  } catch (e) {
+    // 결제 자체는 이미 성공했으니 사용자에게는 성공으로 알리되, 서버 기록 실패는
+    // 로그로만 남긴다(운영 중 Cloudflare 로그에서 확인). 그대로 두면 구독 상태가
+    // 반영 안 될 수 있어 관리자 화면에서 수동 확인이 필요할 수 있음.
+    console.error("firestore_update_failed_after_payment", e);
+    return jsonResponse({
+      ok: true,
+      warning: "결제는 완료됐지만 구독 상태 저장 중 문제가 있었어요. 잠시 후 새로고침해서 확인해 주세요.",
+    });
+  }
+
+  return jsonResponse({ ok: true, paymentId });
+}
+
+export async function handleCancel(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  try {
+    await firestorePatchDoc(env, `users/${user.uid}`, {
+      subscription_status: "canceled",
+      auto_renew: false,
+      next_billing_at: null,
+    });
+  } catch (e) {
+    return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
+  }
+  return jsonResponse({ ok: true });
+}
+
+export async function handleWebhook(request, env) {
+  const rawBody = await request.text();
+  let event;
+  try {
+    event = await verifyPortOneWebhook(env.PORTONE_WEBHOOK_SECRET, rawBody, request.headers);
+  } catch (e) {
+    return jsonResponse({ error: "invalid_signature", detail: String(e.message || e) }, 401);
+  }
+
+  if (!event.type || !event.type.startsWith("Transaction.")) {
+    // 빌링키 발급/삭제 등 결제 이외의 이벤트는 지금 단계에서는 무시.
+    return jsonResponse({ ok: true, ignored: true });
+  }
+
+  const paymentId = event.data && event.data.paymentId;
+  if (!paymentId) return jsonResponse({ ok: true, ignored: true });
+
+  let payment;
+  try {
+    payment = await getPayment(env, paymentId);
+  } catch (e) {
+    return jsonResponse({ error: "portone_get_payment_failed", detail: String(e.message || e) }, 502);
+  }
+
+  // 우리가 채번한 paymentId 형식(sub_{uid}_{timestamp})에서 uid를 복원한다.
+  const idMatch = /^sub_(.+)_(\d+)$/.exec(paymentId);
+  const uid = idMatch ? idMatch[1] : null;
+
+  try {
+    const rows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
+    if (rows[0]) {
+      await firestorePatchDoc(env, `payments/${rows[0].id}`, {
+        status: payment.status === "PAID" ? "paid" : payment.status === "CANCELLED" ? "refunded" : "failed",
+      });
+    }
+    if (uid && payment.status === "FAILED") {
+      await firestorePatchDoc(env, `users/${uid}`, {
+        subscription_status: "none",
+        auto_renew: false,
+        next_billing_at: null,
+      });
+    }
+  } catch (e) {
+    console.error("webhook_firestore_update_failed", e);
+    // 웹훅은 실패해도 포트원이 재시도하므로, 500을 돌려주면 재전송을 유도할 수 있다.
+    return jsonResponse({ error: "internal_error" }, 500);
+  }
+
+  return jsonResponse({ ok: true });
+}
+
+export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdToken) {
+  if (url.pathname === "/api/payments/subscribe" && request.method === "POST") {
+    return handleSubscribe(request, env, verifyFirebaseIdToken);
+  }
+  if (url.pathname === "/api/payments/cancel" && request.method === "POST") {
+    return handleCancel(request, env, verifyFirebaseIdToken);
+  }
+  if (url.pathname === "/api/payments/webhook" && request.method === "POST") {
+    return handleWebhook(request, env);
+  }
+  return null;
+}

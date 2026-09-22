@@ -2,3 +2,4 @@ node_modules
 .wrangler
 .DS_Store
 브랜드-본질-홈페이지-레퍼런스.md
+worker/.secrets/
