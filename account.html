@@ -68,6 +68,7 @@
         <h3>구독 관리</h3>
         <p class="desc" id="subDesc">구독 정보를 불러오는 중이에요...</p>
         <p class="desc" id="subCardInfo" style="display:none;"></p>
+        <p class="desc" id="subPeriodInfo" style="display:none;"></p>
         <div id="subActionArea"></div>
 
         <div style="margin-top:24px;">
@@ -277,16 +278,27 @@
     return `등록된 카드: ${nameOrBrand ? nameOrBrand + ' ' : ''}${data.card_number}`;
   }
 
+  function describePeriod(data) {
+    if (!data || !data.next_billing_at) return '';
+    const startStr = data.billing_key_issued_at ? fmtDate(data.billing_key_issued_at) : null;
+    const nextStr = fmtDate(data.next_billing_at);
+    return startStr
+      ? `구독 시작일: ${startStr} · 다음 결제일: ${nextStr}`
+      : `다음 결제일: ${nextStr}`;
+  }
+
   async function loadSubscriptionInfo(user) {
     const pill = document.getElementById('subStatusPill');
     const desc = document.getElementById('subDesc');
     const cardInfoEl = document.getElementById('subCardInfo');
+    const periodInfoEl = document.getElementById('subPeriodInfo');
     const actionArea = document.getElementById('subActionArea');
     const historyBody = document.getElementById('paymentHistoryBody');
 
     let status = 'none';
     let plan = null;
     let cardText = '';
+    let periodText = '';
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
@@ -294,6 +306,7 @@
         status = data.subscription_status || 'none';
         plan = data.subscription_plan || null;
         cardText = describeCard(data);
+        periodText = describePeriod(data);
       }
     } catch (e) {
       // 못 불러와도 기본값(none)으로 조용히 진행
@@ -304,6 +317,13 @@
       cardInfoEl.style.display = '';
     } else {
       cardInfoEl.style.display = 'none';
+    }
+
+    if (periodText && status === 'active') {
+      periodInfoEl.textContent = periodText;
+      periodInfoEl.style.display = '';
+    } else {
+      periodInfoEl.style.display = 'none';
     }
 
     if (status === 'active') {
