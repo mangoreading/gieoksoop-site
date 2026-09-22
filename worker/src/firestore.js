@@ -215,3 +215,63 @@ export async function firestoreQuery(env, collectionId, fieldName, op, value) {
       ...decodeFields(r.document.fields || {}),
     }));
 }
+
+// 정기결제(cron) 대상 조회: 구독중(active) + 자동결제(auto_renew) 켜짐 + 다음 결제일이
+// 이미 지난 사용자. 3개 조건을 동시에 걸어야 해서 firestoreQuery(단일 조건)로는 안 되고
+// 복합(AND) 쿼리를 직접 만든다.
+// 주의: Firestore가 이런 복합 쿼리에는 색인(index)을 요구할 수 있다. 처음 cron이 돌 때
+// Cloudflare Worker 로그에 "The query requires an index..." 같은 에러가 보이면, 그 에러
+// 메시지에 포함된 링크를 열어 색인을 만들어주면 된다(Firebase 콘솔에서 자동 생성됨).
+export async function firestoreQueryDueBilling(env, nowDate, limit) {
+  const token = await getGoogleAccessToken(env);
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: "users" }],
+      where: {
+        compositeFilter: {
+          op: "AND",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "subscription_status" },
+                op: "EQUAL",
+                value: encodeValue("active"),
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "auto_renew" },
+                op: "EQUAL",
+                value: encodeValue(true),
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "next_billing_at" },
+                op: "LESS_THAN_OR_EQUAL",
+                value: encodeValue(nowDate),
+              },
+            },
+          ],
+        },
+      },
+      limit: limit || 200,
+    },
+  };
+  const res = await fetch(`${docBaseUrl(env)}:runQuery`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("firestore_query_due_billing_failed: " + (await res.text()));
+  const rows = await res.json();
+  return rows
+    .filter((r) => r.document)
+    .map((r) => ({
+      id: r.document.name.split("/").pop(),
+      ...decodeFields(r.document.fields || {}),
+    }));
+}

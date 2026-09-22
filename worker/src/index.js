@@ -3,7 +3,7 @@
 // R2에 저장하고 공개 공유 링크(/share/<id>)를 만들어준다.
 // 메타데이터는 Firestore 없이 R2 안의 manifest.json 하나로 관리한다(2026.09.17 결정).
 
-import { handlePaymentsRoute } from "./payments.js";
+import { handlePaymentsRoute, runScheduledBilling } from "./payments.js";
 
 const FIREBASE_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -483,5 +483,11 @@ export default {
     }
 
     return new Response("not found", { status: 404 });
+  },
+
+  // Cloudflare Cron Trigger(wrangler.toml의 [triggers] crons)가 매일 호출한다.
+  // 정기결제 대상을 찾아 자동으로 재결제하는 로직은 payments.js에 있다.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduledBilling(env));
   },
 };

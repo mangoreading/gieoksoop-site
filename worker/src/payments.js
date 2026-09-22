@@ -1,14 +1,13 @@
-// 구독 결제(포트원 V2 빌링키) 관련 API 라우트.
+// 구독 결제(포트원 V2 빌링키) 관련 API 라우트 + 정기결제 자동 실행(cron).
 // - POST /api/payments/subscribe : 프론트에서 발급받은 빌링키로 첫 결제를 시도하고,
 //   성공하면 Firestore에 구독 상태 + 결제내역을 반영한다.
 // - POST /api/payments/cancel    : 구독 해지(자동결제 중단).
 // - POST /api/payments/webhook   : 포트원이 보내는 결제 결과 알림 수신.
-//
-// 아직 안 된 것(다음 단계): 매달 자동으로 다음 결제를 실행하는 정기 실행(cron)
-// 스케줄러. 오늘은 "빌링키로 실제 첫 결제가 되는지"까지 확인하는 범위.
+// - runScheduledBilling(env)     : Cloudflare Cron Trigger에서 매일 호출 — 다음 결제일이
+//   지난 구독자를 찾아 저장해둔 빌링키로 자동으로 재결제한다(index.js의 scheduled 핸들러 참고).
 
 import { payWithBillingKey, getPayment, verifyPortOneWebhook } from "./portone.js";
-import { firestoreGetDoc, firestorePatchDoc, firestoreAddDoc, firestoreQuery } from "./firestore.js";
+import { firestoreGetDoc, firestorePatchDoc, firestoreAddDoc, firestoreQuery, firestoreQueryDueBilling } from "./firestore.js";
 
 const PLANS = {
   monthly: { amount: 3000, orderName: "기억숲 구독 (월간)", periodMonths: 1 },
@@ -216,4 +215,106 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
     return handleWebhook(request, env);
   }
   return null;
+}
+
+// 정기결제 자동 실행 -- Cloudflare Cron Trigger가 매일 한 번 호출한다(index.js의
+// scheduled 핸들러 참고). 구독중(active) + 자동결제(auto_renew) + 다음 결제일 도래
+// 조건을 만족하는 사용자를 찾아 저장된 빌링키로 다시 청구하고, 성공/실패를 각각
+// Firestore에 반영한다. 결제 실패 시에는 구독을 자동으로 해지 처리한다(재시도 없음 --
+// 카드 재등록은 사용자가 다시 구독하기를 눌러야 한다. 재시도 로직은 다음 단계 과제).
+export async function runScheduledBilling(env) {
+  const now = new Date();
+  let dueUsers;
+  try {
+    dueUsers = await firestoreQueryDueBilling(env, now);
+  } catch (e) {
+    console.error("billing_query_failed", e);
+    return;
+  }
+
+  console.log(`[정기결제] 대상 ${dueUsers.length}명 확인`);
+
+  for (const userDoc of dueUsers) {
+    const uid = userDoc.id;
+    const plan = userDoc.subscription_plan;
+    const billingKey = userDoc.billing_key;
+    const planInfo = PLANS[plan];
+
+    if (!planInfo || !billingKey) {
+      console.error("billing_skip_invalid_user", uid, plan);
+      continue;
+    }
+
+    const paymentId = `sub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    let result;
+    try {
+      result = await payWithBillingKey(env, {
+        paymentId,
+        billingKey,
+        orderName: planInfo.orderName,
+        amount: planInfo.amount,
+        currency: "KRW",
+        customer: {
+          id: uid,
+          name: userDoc.name ? { full: userDoc.name } : undefined,
+          phoneNumber: userDoc.phone || undefined,
+          email: userDoc.email || undefined,
+        },
+      });
+    } catch (e) {
+      console.error("billing_request_failed", uid, e);
+      continue;
+    }
+
+    const chargedAt = new Date();
+
+    if (result.ok) {
+      const nextBillingAt = addMonths(chargedAt, planInfo.periodMonths);
+      try {
+        await firestoreAddDoc(env, "payments", {
+          uid,
+          amount: planInfo.amount,
+          plan,
+          method: "카드",
+          status: "paid",
+          paid_at: chargedAt,
+          created_at: chargedAt,
+          created_by: "portone-cron",
+          payment_id: paymentId,
+        });
+        await firestorePatchDoc(env, `users/${uid}`, {
+          next_billing_at: nextBillingAt,
+          last_billing_at: chargedAt,
+        });
+        console.log("[정기결제] 성공", uid, plan);
+      } catch (e) {
+        console.error("billing_firestore_update_failed", uid, e);
+      }
+    } else {
+      const message = result.data && (result.data.message || result.data.pgMessage);
+      console.error("billing_failed", uid, message);
+      try {
+        await firestoreAddDoc(env, "payments", {
+          uid,
+          amount: planInfo.amount,
+          plan,
+          method: "카드",
+          status: "failed",
+          paid_at: null,
+          created_at: chargedAt,
+          created_by: "portone-cron",
+          payment_id: paymentId,
+        });
+        // 재결제 실패 -- 다음 단계(재시도)가 생기기 전까지는 구독을 바로 해지 처리해서
+        // 실패한 채로 매일 계속 재시도되는 걸 막는다.
+        await firestorePatchDoc(env, `users/${uid}`, {
+          subscription_status: "none",
+          auto_renew: false,
+          next_billing_at: null,
+        });
+      } catch (e) {
+        console.error("billing_firestore_update_failed_after_failure", uid, e);
+      }
+    }
+  }
 }
