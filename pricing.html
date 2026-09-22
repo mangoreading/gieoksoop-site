@@ -270,7 +270,7 @@
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + idToken,
         },
-        body: JSON.stringify({ billingKey: issueResponse.billingKey, plan: selectedPlan }),
+        body: JSON.stringify({ billingKey: issueResponse.billingKey, plan: selectedPlan, fullName: fullName, phoneNumber: phoneNumber }),
       });
       let subscribeData = null;
       try {

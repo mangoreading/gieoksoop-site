@@ -51,11 +51,31 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
     return jsonResponse({ error: "bad_json" }, 400);
   }
 
-  const { billingKey, plan } = body || {};
+  const { billingKey, plan, fullName: bodyFullName, phoneNumber: bodyPhoneNumber } = body || {};
   if (!billingKey || !PLANS[plan]) {
     return jsonResponse({ error: "invalid_params" }, 400);
   }
   const planInfo = PLANS[plan];
+
+  // 결제 요청에 이름/전화번호가 없으면(구버전 프론트 등) Firestore에 저장된 값으로 보완한다.
+  // KG이니시스 채널은 이 두 값이 없으면 실제 청구(REST 결제) 요청 자체를 거부한다.
+  let fullName = bodyFullName;
+  let phoneNumber = bodyPhoneNumber;
+  if (!fullName || !phoneNumber) {
+    try {
+      const userDoc = await firestoreGetDoc(env, `users/${user.uid}`);
+      if (userDoc) {
+        fullName = fullName || userDoc.name;
+        phoneNumber = phoneNumber || userDoc.phone;
+      }
+    } catch (e) {
+      console.error("firestore_user_lookup_failed", e);
+    }
+  }
+  if (!fullName || !phoneNumber) {
+    return jsonResponse({ error: "missing_customer_info", detail: "이름/휴대폰번호가 필요해요." }, 400);
+  }
+
   // KG이니시스 등 일부 PG는 주문번호(oid) 길이를 40자로 제한하므로 uid를 그대로 넣지 않고 짧게 채번한다.
   const paymentId = `sub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -67,7 +87,12 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
       orderName: planInfo.orderName,
       amount: planInfo.amount,
       currency: "KRW",
-      customer: { id: user.uid, email: user.email || undefined },
+      customer: {
+        id: user.uid,
+        name: { full: fullName },
+        phoneNumber,
+        email: user.email || undefined,
+      },
     });
   } catch (e) {
     return jsonResponse({ error: "portone_request_failed", detail: String(e.message || e) }, 502);
