@@ -201,7 +201,7 @@
         storeId: PORTONE_STORE_ID,
         channelKey: PORTONE_CHANNEL_KEY,
         billingKeyMethod: 'CARD',
-        issueId: 'bk_' + user.uid + '_' + Date.now(),
+        issueId: 'bk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
         issueName: '기억숲 구독 카드 등록',
         customer: {
           customerId: user.uid,

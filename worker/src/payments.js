@@ -56,7 +56,8 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
     return jsonResponse({ error: "invalid_params" }, 400);
   }
   const planInfo = PLANS[plan];
-  const paymentId = `sub_${user.uid}_${Date.now()}`;
+  // KG이니시스 등 일부 PG는 주문번호(oid) 길이를 40자로 제한하므로 uid를 그대로 넣지 않고 짧게 채번한다.
+  const paymentId = `sub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
   let result;
   try {
@@ -155,12 +156,9 @@ export async function handleWebhook(request, env) {
     return jsonResponse({ error: "portone_get_payment_failed", detail: String(e.message || e) }, 502);
   }
 
-  // 우리가 채번한 paymentId 형식(sub_{uid}_{timestamp})에서 uid를 복원한다.
-  const idMatch = /^sub_(.+)_(\d+)$/.exec(paymentId);
-  const uid = idMatch ? idMatch[1] : null;
-
   try {
     const rows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
+    const uid = rows[0] && rows[0].uid;
     if (rows[0]) {
       await firestorePatchDoc(env, `payments/${rows[0].id}`, {
         status: payment.status === "PAID" ? "paid" : payment.status === "CANCELLED" ? "refunded" : "failed",
