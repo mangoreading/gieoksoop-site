@@ -220,10 +220,35 @@
         return;
       }
 
-      // TODO(다음 단계): 여기서 발급된 issueResponse.billingKey를 서버(/api/payments/...)로 전달해
-      // 정기결제를 등록하고 Firestore 구독 상태를 갱신한다. 서버 쪽 연동 전까지는 발급 확인만 한다.
-      console.log('[포트원 테스트] 빌링키 발급 성공:', issueResponse.billingKey);
-      alert('테스트 카드 등록이 완료됐어요! (빌링키 발급 확인)\n실제 정기결제 서버 연동은 다음 단계에서 이어집니다.');
+      // 카드 등록(빌링키 발급)에 이어 서버에 첫 결제를 요청하고 구독 상태를 활성화한다.
+      // 현재는 이 버튼 하나로 월간 구독만 가입할 수 있다(연간 결제 선택 UI는 다음 단계).
+      subscribeBtn.textContent = '결제 처리 중...';
+      const idToken = await user.getIdToken();
+      const subscribeRes = await fetch('/api/payments/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + idToken,
+        },
+        body: JSON.stringify({ billingKey: issueResponse.billingKey, plan: 'monthly' }),
+      });
+      let subscribeData = null;
+      try {
+        subscribeData = await subscribeRes.json();
+      } catch (e) {
+        console.error(e);
+      }
+      if (!subscribeRes.ok || !subscribeData || !subscribeData.ok) {
+        const detail = subscribeData && (subscribeData.detail || subscribeData.error);
+        alert('카드 등록은 완료됐지만 결제 처리 중 문제가 발생했어요: ' + (detail || subscribeRes.status));
+        return;
+      }
+      if (subscribeData.warning) {
+        alert(subscribeData.warning);
+      } else {
+        alert('구독 결제가 완료됐어요! 매달 자동으로 결제됩니다.');
+      }
+      window.location.reload();
     } catch (e) {
       console.error(e);
       alert('카드 등록 중 문제가 발생했어요: ' + (e.message || e));
