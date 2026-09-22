@@ -173,6 +173,7 @@
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { doc, getDoc, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
+  import { showAlert, showConfirm } from './js/dialog.js';
 
   watchAuthForNav();
   initLangToggle();
@@ -282,9 +283,12 @@
     if (!data || !data.next_billing_at) return '';
     const startStr = data.billing_key_issued_at ? fmtDate(data.billing_key_issued_at) : null;
     const nextStr = fmtDate(data.next_billing_at);
-    return startStr
-      ? `구독 시작일: ${startStr} · 다음 결제일: ${nextStr}`
-      : `다음 결제일: ${nextStr}`;
+    const label = data.auto_renew === false ? '이용 만료일' : '다음 결제일';
+    return startStr ? `구독 시작일: ${startStr} · ${label}: ${nextStr}` : `${label}: ${nextStr}`;
+  }
+
+  function planLabel(plan) {
+    return plan === 'annual' ? '연간' : plan === 'monthly' ? '월간' : (plan || '-');
   }
 
   async function loadSubscriptionInfo(user) {
@@ -299,14 +303,15 @@
     let plan = null;
     let cardText = '';
     let periodText = '';
+    let subData = null;
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
-        const data = snap.data();
-        status = data.subscription_status || 'none';
-        plan = data.subscription_plan || null;
-        cardText = describeCard(data);
-        periodText = describePeriod(data);
+        subData = snap.data();
+        status = subData.subscription_status || 'none';
+        plan = subData.subscription_plan || null;
+        cardText = describeCard(subData);
+        periodText = describePeriod(subData);
       }
     } catch (e) {
       // 못 불러와도 기본값(none)으로 조용히 진행
@@ -327,44 +332,102 @@
     }
 
     if (status === 'active') {
-      pill.textContent = '구독 중' + (plan ? ` (${plan})` : '');
-      pill.className = 'status-pill active';
-      desc.textContent = '현재 유료 구독을 이용 중이에요. 해지하면 다음 결제부터 자동으로 청구되지 않아요.';
-      actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn">구독 해지하기</button>`;
-      document.getElementById('cancelSubBtn').addEventListener('click', async () => {
-        const btn = document.getElementById('cancelSubBtn');
-        const confirmed = window.confirm('정말 구독을 해지하시겠어요? 다음 결제부터는 자동으로 청구되지 않아요.');
-        if (!confirmed) return;
-        const originalLabel = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = '해지 처리 중...';
-        try {
-          const idToken = await user.getIdToken();
-          const res = await fetch('/api/payments/cancel', {
-            method: 'POST',
-            headers: { Authorization: 'Bearer ' + idToken },
-          });
-          let data = null;
+      const autoRenew = subData.auto_renew !== false;
+      const pendingPlan = subData.pending_plan || null;
+
+      if (autoRenew) {
+        pill.textContent = '구독 중' + (plan ? ` (${planLabel(plan)})` : '');
+        pill.className = 'status-pill active';
+        desc.textContent = pendingPlan
+          ? `현재 ${planLabel(plan)} 플랜을 이용 중이에요. 다음 결제일부터 ${planLabel(pendingPlan)} 플랜으로 전환돼요.`
+          : '현재 유료 구독을 이용 중이에요. 해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.';
+        actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn">구독 해지하기</button>`;
+        document.getElementById('cancelSubBtn').addEventListener('click', async () => {
+          const btn = document.getElementById('cancelSubBtn');
+          const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
+          const confirmed = await showConfirm(
+            (untilStr ? `해지해도 ${untilStr}까지는 계속 이용하실 수 있어요.\n` : '') +
+              '그 이후부터는 자동으로 결제되지 않아요. 정말 해지하시겠어요?',
+            { title: '구독 해지', okText: '해지하기', danger: true }
+          );
+          if (!confirmed) return;
+          const originalLabel = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = '해지 처리 중...';
           try {
-            data = await res.json();
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/payments/cancel', {
+              method: 'POST',
+              headers: { Authorization: 'Bearer ' + idToken },
+            });
+            let resData = null;
+            try {
+              resData = await res.json();
+            } catch (e) {
+              // 응답 바디가 없어도 상태 코드로 판단
+            }
+            if (!res.ok || !resData || !resData.ok) {
+              await showAlert('구독 해지 처리 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요.', { icon: { type: 'error', glyph: '!' } });
+              btn.disabled = false;
+              btn.textContent = originalLabel;
+              return;
+            }
+            await showAlert(
+              (untilStr ? `해지 예약이 완료됐어요. ${untilStr}까지는 계속 이용하실 수 있어요.` : '해지 예약이 완료됐어요.'),
+              { title: '해지 완료', icon: { type: 'success', glyph: '✓' } }
+            );
+            window.location.reload();
           } catch (e) {
-            // 응답 바디가 없어도 상태 코드로 판단
-          }
-          if (!res.ok || !data || !data.ok) {
-            alert('구독 해지 처리 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요.');
+            console.error(e);
+            await showAlert('구독 해지 처리 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
             btn.disabled = false;
             btn.textContent = originalLabel;
-            return;
           }
-          alert('구독이 해지됐어요. 다음 결제부터는 청구되지 않습니다.');
-          window.location.reload();
-        } catch (e) {
-          console.error(e);
-          alert('구독 해지 처리 중 문제가 발생했어요: ' + (e.message || e));
-          btn.disabled = false;
-          btn.textContent = originalLabel;
-        }
-      });
+        });
+      } else {
+        pill.textContent = '해지 예정';
+        pill.className = 'status-pill canceled';
+        const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : '이용 기간 종료일';
+        desc.textContent = `${untilStr}까지는 계속 이용하실 수 있어요. 그 이후에는 자동으로 결제되지 않아요.`;
+        actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="resumeSubBtn">구독 유지하기</button>`;
+        document.getElementById('resumeSubBtn').addEventListener('click', async () => {
+          const btn = document.getElementById('resumeSubBtn');
+          const confirmed = await showConfirm('자동 결제를 다시 켤까요? 이후로는 계속 정기 결제가 이뤄져요.', {
+            title: '구독 유지하기',
+            okText: '유지하기',
+          });
+          if (!confirmed) return;
+          const originalLabel = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = '처리 중...';
+          try {
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/payments/resume', {
+              method: 'POST',
+              headers: { Authorization: 'Bearer ' + idToken },
+            });
+            let resData = null;
+            try {
+              resData = await res.json();
+            } catch (e) {
+              // 응답 바디가 없어도 상태 코드로 판단
+            }
+            if (!res.ok || !resData || !resData.ok) {
+              await showAlert('처리 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요.', { icon: { type: 'error', glyph: '!' } });
+              btn.disabled = false;
+              btn.textContent = originalLabel;
+              return;
+            }
+            await showAlert('구독을 계속 이용하실 수 있어요.', { title: '완료', icon: { type: 'success', glyph: '✓' } });
+            window.location.reload();
+          } catch (e) {
+            console.error(e);
+            await showAlert('처리 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
+            btn.disabled = false;
+            btn.textContent = originalLabel;
+          }
+        });
+      }
     } else if (status === 'canceled') {
       pill.textContent = '해지됨';
       pill.className = 'status-pill canceled';
