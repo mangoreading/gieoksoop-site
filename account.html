@@ -67,6 +67,7 @@
       <div class="subsection" id="subSection">
         <h3>구독 관리</h3>
         <p class="desc" id="subDesc">구독 정보를 불러오는 중이에요...</p>
+        <p class="desc" id="subCardInfo" style="display:none;"></p>
         <div id="subActionArea"></div>
 
         <div style="margin-top:24px;">
@@ -259,22 +260,50 @@
     return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  const CARD_BRAND_LABEL = {
+    LOCAL: '국내전용',
+    VISA: '비자',
+    MASTER: '마스터카드',
+    UNIONPAY: '유니온페이',
+    JCB: 'JCB',
+    AMEX: '아멕스',
+    DINERS: '다이너스',
+  };
+
+  function describeCard(data) {
+    if (!data || !data.card_number) return '';
+    const brandLabel = CARD_BRAND_LABEL[data.card_brand] || '';
+    const nameOrBrand = data.card_name || brandLabel;
+    return `등록된 카드: ${nameOrBrand ? nameOrBrand + ' ' : ''}${data.card_number}`;
+  }
+
   async function loadSubscriptionInfo(user) {
     const pill = document.getElementById('subStatusPill');
     const desc = document.getElementById('subDesc');
+    const cardInfoEl = document.getElementById('subCardInfo');
     const actionArea = document.getElementById('subActionArea');
     const historyBody = document.getElementById('paymentHistoryBody');
 
     let status = 'none';
     let plan = null;
+    let cardText = '';
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
-        status = snap.data().subscription_status || 'none';
-        plan = snap.data().subscription_plan || null;
+        const data = snap.data();
+        status = data.subscription_status || 'none';
+        plan = data.subscription_plan || null;
+        cardText = describeCard(data);
       }
     } catch (e) {
       // 못 불러와도 기본값(none)으로 조용히 진행
+    }
+
+    if (cardText && status === 'active') {
+      cardInfoEl.textContent = cardText;
+      cardInfoEl.style.display = '';
+    } else {
+      cardInfoEl.style.display = 'none';
     }
 
     if (status === 'active') {

@@ -14,6 +14,27 @@ const PLANS = {
   annual: { amount: 28000, orderName: "기억숲 구독 (연간)", periodMonths: 12 },
 };
 
+// 포트원 결제 상세 조회(getPayment) 응답에서 등록된 카드 정보를 뽑아낸다.
+// 카드 결제가 아니거나 조회에 실패하면 null을 반환 -- 카드 정보는 화면 표시용
+// 부가 정보라 실패해도 결제/구독 처리 자체를 막지 않는다.
+function extractCardInfo(payment) {
+  try {
+    const method = payment && payment.method;
+    if (method && method.type === "PaymentMethodCard" && method.card) {
+      const card = method.card;
+      return {
+        card_brand: card.brand || null,
+        card_name: card.name || null,
+        card_number: card.number || null,
+        card_issuer: card.issuer || null,
+      };
+    }
+  } catch (e) {
+    console.error("extract_card_info_failed", e);
+  }
+  return null;
+}
+
 function addMonths(date, months) {
   const d = new Date(date.getTime());
   d.setMonth(d.getMonth() + months);
@@ -106,6 +127,16 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
   const now = new Date();
   const nextBillingAt = addMonths(now, planInfo.periodMonths);
 
+  // 등록된 카드 정보(마스킹된 카드번호, 브랜드 등)를 조회해 사용자 화면/어드민 화면에
+  // 노출할 수 있게 저장해둔다. 조회에 실패해도 결제 자체는 이미 끝났으니 계속 진행.
+  let cardInfo = null;
+  try {
+    const paymentDetail = await getPayment(env, paymentId);
+    cardInfo = extractCardInfo(paymentDetail);
+  } catch (e) {
+    console.error("get_payment_for_card_info_failed", e);
+  }
+
   try {
     await firestoreAddDoc(env, "payments", {
       uid: user.uid,
@@ -117,6 +148,7 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
       created_at: now,
       created_by: "portone",
       payment_id: paymentId,
+      ...(cardInfo || {}),
     });
     await firestorePatchDoc(env, `users/${user.uid}`, {
       subscription_status: "active",
@@ -125,6 +157,7 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
       auto_renew: true,
       billing_key_issued_at: now,
       next_billing_at: nextBillingAt,
+      ...(cardInfo || {}),
     });
   } catch (e) {
     // 결제 자체는 이미 성공했으니 사용자에게는 성공으로 알리되, 서버 기록 실패는
@@ -270,6 +303,13 @@ export async function runScheduledBilling(env) {
 
     if (result.ok) {
       const nextBillingAt = addMonths(chargedAt, planInfo.periodMonths);
+      let cardInfo = null;
+      try {
+        const paymentDetail = await getPayment(env, paymentId);
+        cardInfo = extractCardInfo(paymentDetail);
+      } catch (e) {
+        console.error("get_payment_for_card_info_failed_cron", uid, e);
+      }
       try {
         await firestoreAddDoc(env, "payments", {
           uid,
@@ -281,10 +321,12 @@ export async function runScheduledBilling(env) {
           created_at: chargedAt,
           created_by: "portone-cron",
           payment_id: paymentId,
+          ...(cardInfo || {}),
         });
         await firestorePatchDoc(env, `users/${uid}`, {
           next_billing_at: nextBillingAt,
           last_billing_at: chargedAt,
+          ...(cardInfo || {}),
         });
         console.log("[정기결제] 성공", uid, plan);
       } catch (e) {
