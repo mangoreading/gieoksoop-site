@@ -113,9 +113,29 @@
     </div>
 
     <p class="pricing-note">
-      유료 구독은 결제 주기가 끝나면 자동으로 갱신·결제됩니다. 월간 결제는 매달 자동으로 결제되어 별도로 재결제하지 않아도 계속 이용할 수 있어요.<br>
-      결제(정기구독) 기능은 통신판매업 신고와 결제대행사 연동이 끝나는 대로 이 페이지에서 바로 이용할 수 있게 됩니다. 정확한 가격과 결제 방식은 오픈 전 이 페이지에 다시 안내드릴게요.
+      유료 구독은 결제 주기가 끝나면 자동으로 갱신·결제됩니다. 해지해도 이미 결제한 기간까지는 계속 이용할 수 있고, 그 이후부터 자동 결제가 중단돼요.<br>
+      월간⟷연간 플랜 전환은 지금 이용 중인 기간이 끝나는 다음 결제일부터 적용돼요.
     </p>
+
+    <div class="modal-overlay" id="customerInfoModalOverlay">
+      <div class="modal-box">
+        <button type="button" class="modal-close" id="customerInfoCloseBtn" aria-label="닫기">&times;</button>
+        <h3>결제 정보 입력</h3>
+        <p class="desc">정기결제 등록을 위해 이름과 휴대폰 번호가 필요해요. 다음부터는 다시 입력하지 않아도 돼요.</p>
+        <div class="form-error" id="customerInfoError"></div>
+        <form id="customerInfoForm">
+          <div class="form-field">
+            <label for="customerInfoName">이름</label>
+            <input type="text" id="customerInfoName" autocomplete="name" required>
+          </div>
+          <div class="form-field">
+            <label for="customerInfoPhone">휴대폰 번호</label>
+            <input type="tel" id="customerInfoPhone" autocomplete="tel" placeholder="01012345678" required>
+          </div>
+          <button type="submit" class="btn btn-accent btn-block" id="customerInfoSubmitBtn">다음</button>
+        </form>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -150,26 +170,101 @@
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
+  import { showAlert, showConfirm } from './js/dialog.js';
 
   watchAuthForNav();
   initLangToggle();
 
   const subscribeButtons = document.querySelectorAll('.subscribe-btn');
+  subscribeButtons.forEach((btn) => { btn.dataset.defaultLabel = btn.textContent; });
+
   let isLoggedIn = false;
-  onAuthStateChanged(auth, (user) => { isLoggedIn = !!user; });
+  let currentSub = null; // 로그인한 사용자의 현재 구독 상태(users 문서) 캐시
+
+  function fmtDate(ts) {
+    if (!ts || !ts.toDate) return null;
+    const d = ts.toDate();
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  }
 
   const PLAN_DISPLAY = {
-    monthly: { issueName: '기억숲 구독 카드 등록 (월간)' },
-    annual: { issueName: '기억숲 구독 카드 등록 (연간)' },
+    monthly: { issueName: '기억숲 구독 카드 등록 (월간)', korean: '월간' },
+    annual: { issueName: '기억숲 구독 카드 등록 (연간)', korean: '연간' },
   };
 
-  // 포트원(PortOne) V2 빌링키(정기결제용 카드 등록) 발급 -- 테스트 채널 연동 1단계.
+  // 포트원(PortOne) V2 빌링키(정기결제용 카드 등록) 발급.
   // storeId/channelKey는 비밀값이 아니라 프론트엔드에 그대로 노출되는 공개 식별자.
   const PORTONE_STORE_ID = 'store-9b3f8aa5-ea5a-4941-a366-56d89fdb6ed2';
   const PORTONE_CHANNEL_KEY = 'channel-key-2c2cfc86-6056-47cb-a1da-9ca271f3035a';
 
-  // 포트원(KG이니시스) 빌링키 발급에는 이름/휴대폰 번호가 필수라, 없으면 한 번만 물어보고
-  // Firestore에 저장해둔다(다음부터는 다시 안 물어봄).
+  // 포트원/PG가 내려주는 원문 에러 메시지는 사용자에게 그대로 보여주기엔 어려운
+  // 경우가 많아서, 흔한 케이스 몇 가지는 이해하기 쉬운 안내로 바꿔서 보여준다.
+  function friendlyBillingError(rawMessage) {
+    const msg = String(rawMessage || '');
+    if (!msg) return '잠시 후 다시 시도해 주세요.';
+    if (/카드번호|card ?number/i.test(msg)) return '카드번호를 다시 확인해 주세요.';
+    if (/유효\s*기간|expir/i.test(msg)) return '카드 유효기간을 다시 확인해 주세요.';
+    if (/한도|잔액|insufficient/i.test(msg)) return '카드 한도 또는 잔액을 확인해 주세요.';
+    if (/분실|도난|정지|blocked|lost|stolen/i.test(msg)) return '카드사에서 거래를 제한하고 있어요. 카드사에 문의해 주세요.';
+    if (/인증/i.test(msg)) return '본인 인증에 실패했어요. 다시 시도해 주세요.';
+    if (/이미 구독/i.test(msg) || /already_subscribed/i.test(msg)) return '이미 구독 중이에요. 새로고침한 뒤 다시 시도해 주세요.';
+    return '카드사 정책에 따라 결제가 거절됐어요. 다른 카드로 시도하거나 카드사에 문의해 주세요.';
+  }
+
+  // 이름/휴대폰 번호 입력 모달 -- 정기결제(빌링키) 등록에 필요한 최소 정보를
+  // window.prompt() 대신 페이지 톤에 맞는 폼으로 받는다.
+  function openCustomerInfoModal({ fullName, phoneNumber }) {
+    const overlay = document.getElementById('customerInfoModalOverlay');
+    const form = document.getElementById('customerInfoForm');
+    const nameInput = document.getElementById('customerInfoName');
+    const phoneInput = document.getElementById('customerInfoPhone');
+    const errorEl = document.getElementById('customerInfoError');
+    const closeBtn = document.getElementById('customerInfoCloseBtn');
+
+    nameInput.value = fullName || '';
+    phoneInput.value = phoneNumber || '';
+    errorEl.style.display = 'none';
+
+    return new Promise((resolve) => {
+      function cleanup(result) {
+        overlay.classList.remove('open');
+        form.removeEventListener('submit', onSubmit);
+        closeBtn.removeEventListener('click', onCancel);
+        overlay.removeEventListener('click', onOverlayClick);
+        resolve(result);
+      }
+      function onCancel() {
+        cleanup(null);
+      }
+      function onOverlayClick(e) {
+        if (e.target === overlay) cleanup(null);
+      }
+      function onSubmit(e) {
+        e.preventDefault();
+        const name = nameInput.value.trim();
+        const rawPhone = phoneInput.value.replace(/[^0-9]/g, '');
+        if (!name) {
+          errorEl.textContent = '이름을 입력해 주세요.';
+          errorEl.style.display = 'block';
+          return;
+        }
+        if (!/^01[0-9]{8,9}$/.test(rawPhone)) {
+          errorEl.textContent = '휴대폰 번호 형식이 올바르지 않아요. 숫자만 입력해 주세요. (예: 01012345678)';
+          errorEl.style.display = 'block';
+          return;
+        }
+        cleanup({ fullName: name, phoneNumber: rawPhone });
+      }
+      form.addEventListener('submit', onSubmit);
+      closeBtn.addEventListener('click', onCancel);
+      overlay.addEventListener('click', onOverlayClick);
+      overlay.classList.add('open');
+      nameInput.focus();
+    });
+  }
+
+  // 포트원(KG이니시스) 빌링키 발급에는 이름/휴대폰 번호가 필수라, 없으면 모달로
+  // 한 번만 물어보고 Firestore에 저장해둔다(다음부터는 다시 안 물어봄).
   async function collectCustomerInfo(user) {
     let fullName = user.displayName || '';
     let phoneNumber = '';
@@ -184,33 +279,135 @@
       console.error(e);
     }
 
-    if (!fullName) {
-      fullName = (window.prompt('결제 등록에 필요해요. 이름을 입력해 주세요.', '') || '').trim();
-      if (!fullName) return null;
+    if (fullName && phoneNumber) {
+      return { fullName, phoneNumber };
     }
-    if (!phoneNumber) {
-      const rawPhone = window.prompt('결제 등록에 필요해요. 휴대폰 번호를 숫자만 입력해 주세요. (예: 01012345678)', '') || '';
-      phoneNumber = rawPhone.replace(/[^0-9]/g, '');
-      if (!/^01[0-9]{8,9}$/.test(phoneNumber)) {
-        alert('휴대폰 번호 형식이 올바르지 않아요. 숫자만 입력해서 다시 시도해 주세요.');
-        return null;
+
+    const result = await openCustomerInfoModal({ fullName, phoneNumber });
+    if (!result) return null;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { name: result.fullName, phone: result.phoneNumber });
+    } catch (e) {
+      console.error(e);
+    }
+    return result;
+  }
+
+  // 로그인 상태 + 현재 구독 상태에 맞춰 플랜 버튼들의 라벨/활성화 여부를 갱신한다.
+  function renderPlanButtons() {
+    subscribeButtons.forEach((btn) => {
+      const plan = btn.dataset.plan;
+      btn.disabled = false;
+      btn.textContent = btn.dataset.defaultLabel;
+      btn.classList.remove('btn-outline');
+      btn.classList.add('btn-accent');
+
+      if (!currentSub || currentSub.subscription_status !== 'active') return;
+
+      const currentPlan = currentSub.subscription_plan;
+      const autoRenew = currentSub.auto_renew !== false;
+      const pendingPlan = currentSub.pending_plan || null;
+
+      if (!autoRenew) {
+        // 해지 예약 중 -- 플랜 전환 대신 계정 페이지에서 구독 유지부터 안내.
+        btn.disabled = true;
+        btn.textContent = '해지 예약 중이에요';
+        btn.classList.remove('btn-accent');
+        btn.classList.add('btn-outline');
+        return;
       }
+
+      if (plan === currentPlan) {
+        btn.disabled = true;
+        btn.textContent = pendingPlan ? '다른 플랜으로 전환 예정' : '이용 중인 플랜이에요';
+        btn.classList.remove('btn-accent');
+        btn.classList.add('btn-outline');
+        return;
+      }
+
+      if (pendingPlan === plan) {
+        btn.textContent = '전환 예약 취소하기';
+        btn.classList.remove('btn-accent');
+        btn.classList.add('btn-outline');
+      } else {
+        btn.textContent = '다음 결제일부터 전환하기';
+      }
+    });
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    isLoggedIn = !!user;
+    currentSub = null;
+    if (user) {
       try {
-        await updateDoc(doc(db, 'users', user.uid), { phone: phoneNumber });
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) currentSub = snap.data();
       } catch (e) {
         console.error(e);
       }
     }
-    return { fullName, phoneNumber };
+    renderPlanButtons();
+  });
+
+  // 이미 활성 구독 중인 사용자가 다른 플랜 버튼을 눌렀을 때 -- 바로 재결제하지
+  // 않고, 다음 결제일부터 전환되도록 예약만 한다(이미 결제한 기간은 보장).
+  async function changePlan(clickedPlan, btn) {
+    const pendingPlan = currentSub.pending_plan || null;
+    const isCancelingPending = pendingPlan === clickedPlan;
+    const targetPlan = isCancelingPending ? currentSub.subscription_plan : clickedPlan;
+    const effectiveDate = fmtDate(currentSub.next_billing_at);
+
+    const confirmMsg = isCancelingPending
+      ? '플랜 전환 예약을 취소할까요? 지금 이용 중인 플랜이 계속 유지돼요.'
+      : `${effectiveDate ? '다음 결제일(' + effectiveDate + ')' : '다음 결제일'}부터 ${PLAN_DISPLAY[clickedPlan].korean} 플랜으로 전환돼요. 그 전까지는 지금 플랜을 그대로 이용하실 수 있어요.`;
+
+    const confirmed = await showConfirm(confirmMsg, {
+      title: '플랜 변경',
+      okText: isCancelingPending ? '전환 취소하기' : '전환 예약하기',
+    });
+    if (!confirmed) return;
+
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '처리 중...';
+    try {
+      const user = auth.currentUser;
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/payments/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ plan: targetPlan }),
+      });
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (e) {
+        console.error(e);
+      }
+      if (!res.ok || !data || !data.ok) {
+        await showAlert('처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)), {
+          icon: { type: 'error', glyph: '!' },
+        });
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+      await showAlert(isCancelingPending ? '전환 예약이 취소됐어요.' : '플랜 전환이 예약됐어요.', {
+        title: '완료',
+        icon: { type: 'success', glyph: '✓' },
+      });
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+      await showAlert('처리 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
   }
 
-  async function startSubscribe(plan, btn) {
-    if (!isLoggedIn) {
-      window.location.href = 'signup.html';
-      return;
-    }
+  // 신규 구독(또는 해지 후 재구독) -- 빌링키를 새로 발급하고 즉시 첫 결제를 진행한다.
+  async function startNewSubscription(plan, btn) {
     const user = auth.currentUser;
-    if (!user) return;
 
     const info = await collectCustomerInfo(user);
     if (!info) return;
@@ -240,7 +437,10 @@
         return;
       }
       if (issueResponse.code) {
-        alert('카드 등록이 완료되지 않았어요: ' + (issueResponse.message || issueResponse.code));
+        await showAlert(friendlyBillingError(issueResponse.message || issueResponse.code), {
+          title: '카드 등록 실패',
+          icon: { type: 'error', glyph: '!' },
+        });
         return;
       }
 
@@ -263,26 +463,50 @@
       }
       if (!subscribeRes.ok || !subscribeData || !subscribeData.ok) {
         const detail = subscribeData && (subscribeData.detail || subscribeData.error);
-        alert('카드 등록은 완료됐지만 결제 처리 중 문제가 발생했어요: ' + (detail || subscribeRes.status));
+        await showAlert('카드 등록은 완료됐지만 결제 처리 중 문제가 발생했어요: ' + friendlyBillingError(detail), {
+          title: '결제 실패',
+          icon: { type: 'error', glyph: '!' },
+        });
         return;
       }
       if (subscribeData.warning) {
-        alert(subscribeData.warning);
+        await showAlert(subscribeData.warning, { icon: { type: 'success', glyph: '✓' } });
       } else {
-        alert('구독 결제가 완료됐어요! ' + (plan === 'annual' ? '매년' : '매달') + ' 자동으로 결제됩니다.');
+        await showAlert(
+          '구독 결제가 완료됐어요! ' + (plan === 'annual' ? '매년' : '매달') + ' 자동으로 결제됩니다.',
+          { title: '구독 완료', icon: { type: 'success', glyph: '✓' } }
+        );
       }
       window.location.reload();
     } catch (e) {
       console.error(e);
-      alert('카드 등록 중 문제가 발생했어요: ' + (e.message || e));
+      await showAlert('카드 등록 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
     } finally {
       subscribeButtons.forEach((b) => { b.disabled = false; });
       btn.textContent = originalText;
     }
   }
 
+  async function startSubscribe(plan, btn) {
+    if (!isLoggedIn) {
+      window.location.href = 'signup.html';
+      return;
+    }
+    const user = auth.currentUser;
+    if (!user) return;
+
+    if (currentSub && currentSub.subscription_status === 'active' && currentSub.auto_renew !== false) {
+      return changePlan(plan, btn);
+    }
+
+    return startNewSubscription(plan, btn);
+  }
+
   subscribeButtons.forEach((btn) => {
-    btn.addEventListener('click', () => startSubscribe(btn.dataset.plan, btn));
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      startSubscribe(btn.dataset.plan, btn);
+    });
   });
 </script>
 
