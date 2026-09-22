@@ -134,8 +134,9 @@
 
 <script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
 <script type="module">
-  import { auth, watchAuthForNav } from './js/auth.js';
+  import { auth, db, watchAuthForNav } from './js/auth.js';
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+  import { doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
 
   watchAuthForNav();
@@ -158,6 +159,39 @@
     const user = auth.currentUser;
     if (!user) return;
 
+    // 포트원(KG이니시스) 빌링키 발급에는 이름/휴대폰 번호가 필수라, 없으면 한 번만 물어보고
+    // Firestore에 저장해둔다(다음부터는 다시 안 물어봄).
+    let fullName = user.displayName || '';
+    let phoneNumber = '';
+    try {
+      const userSnap = await getDoc(doc(db, 'users', user.uid));
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        if (!fullName) fullName = userData.name || '';
+        phoneNumber = userData.phone || '';
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    if (!fullName) {
+      fullName = (window.prompt('결제 등록에 필요해요. 이름을 입력해 주세요.', '') || '').trim();
+      if (!fullName) return;
+    }
+    if (!phoneNumber) {
+      const rawPhone = window.prompt('결제 등록에 필요해요. 휴대폰 번호를 숫자만 입력해 주세요. (예: 01012345678)', '') || '';
+      phoneNumber = rawPhone.replace(/[^0-9]/g, '');
+      if (!/^01[0-9]{8,9}$/.test(phoneNumber)) {
+        alert('휴대폰 번호 형식이 올바르지 않아요. 숫자만 입력해서 다시 시도해 주세요.');
+        return;
+      }
+      try {
+        await updateDoc(doc(db, 'users', user.uid), { phone: phoneNumber });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     const originalText = subscribeBtn.textContent;
     subscribeBtn.disabled = true;
     subscribeBtn.textContent = '카드 등록 창을 여는 중...';
@@ -171,6 +205,8 @@
         issueName: '기억숲 구독 카드 등록',
         customer: {
           customerId: user.uid,
+          fullName: fullName,
+          phoneNumber: phoneNumber,
           email: user.email || undefined,
         },
       });
