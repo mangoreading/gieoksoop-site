@@ -275,3 +275,60 @@ export async function firestoreQueryDueBilling(env, nowDate, limit) {
       ...decodeFields(r.document.fields || {}),
     }));
 }
+
+// 해지 예약(cancel_at_period_end)했지만 아직 만료 처리는 안 된 사용자 중,
+// 이용 만료일(next_billing_at)이 지난 사람을 찾는다. 정기결제 대상 조회와
+// 거의 같은 모양이지만 auto_renew가 false라는 점만 다르다.
+export async function firestoreQueryDueCancellation(env, nowDate, limit) {
+  const token = await getGoogleAccessToken(env);
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: "users" }],
+      where: {
+        compositeFilter: {
+          op: "AND",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "subscription_status" },
+                op: "EQUAL",
+                value: encodeValue("active"),
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "cancel_at_period_end" },
+                op: "EQUAL",
+                value: encodeValue(true),
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: "next_billing_at" },
+                op: "LESS_THAN_OR_EQUAL",
+                value: encodeValue(nowDate),
+              },
+            },
+          ],
+        },
+      },
+      limit: limit || 200,
+    },
+  };
+  const res = await fetch(`${docBaseUrl(env)}:runQuery`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("firestore_query_due_cancellation_failed: " + (await res.text()));
+  const rows = await res.json();
+  return rows
+    .filter((r) => r.document)
+    .map((r) => ({
+      id: r.document.name.split("/").pop(),
+      ...decodeFields(r.document.fields || {}),
+    }));
+}

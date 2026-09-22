@@ -6,8 +6,15 @@
 // - runScheduledBilling(env)     : Cloudflare Cron Trigger에서 매일 호출 — 다음 결제일이
 //   지난 구독자를 찾아 저장해둔 빌링키로 자동으로 재결제한다(index.js의 scheduled 핸들러 참고).
 
-import { payWithBillingKey, getPayment, verifyPortOneWebhook } from "./portone.js";
-import { firestoreGetDoc, firestorePatchDoc, firestoreAddDoc, firestoreQuery, firestoreQueryDueBilling } from "./firestore.js";
+import { payWithBillingKey, getPayment, deleteBillingKey, verifyPortOneWebhook } from "./portone.js";
+import {
+  firestoreGetDoc,
+  firestorePatchDoc,
+  firestoreAddDoc,
+  firestoreQuery,
+  firestoreQueryDueBilling,
+  firestoreQueryDueCancellation,
+} from "./firestore.js";
 
 const PLANS = {
   monthly: { amount: 3000, orderName: "기억숲 구독 (월간)", periodMonths: 1 },
@@ -77,21 +84,23 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
   }
   const planInfo = PLANS[plan];
 
+  let existingUser = null;
+  try {
+    existingUser = await firestoreGetDoc(env, `users/${user.uid}`);
+  } catch (e) {
+    console.error("firestore_user_lookup_failed", e);
+  }
+
+  // 이미 구독 중인 사용자가(플랜 변경 목적으로) 여기로 왔다면 바로 다시 결제하지
+  // 않는다 -- 플랜 변경은 /api/payments/change-plan에서 다음 결제일부터 예약 처리한다.
+  if (existingUser && existingUser.subscription_status === "active") {
+    return jsonResponse({ error: "already_subscribed", detail: "이미 구독 중이에요. 플랜을 바꾸려면 change-plan을 사용하세요." }, 409);
+  }
+
   // 결제 요청에 이름/전화번호가 없으면(구버전 프론트 등) Firestore에 저장된 값으로 보완한다.
   // KG이니시스 채널은 이 두 값이 없으면 실제 청구(REST 결제) 요청 자체를 거부한다.
-  let fullName = bodyFullName;
-  let phoneNumber = bodyPhoneNumber;
-  if (!fullName || !phoneNumber) {
-    try {
-      const userDoc = await firestoreGetDoc(env, `users/${user.uid}`);
-      if (userDoc) {
-        fullName = fullName || userDoc.name;
-        phoneNumber = phoneNumber || userDoc.phone;
-      }
-    } catch (e) {
-      console.error("firestore_user_lookup_failed", e);
-    }
-  }
+  const fullName = bodyFullName || (existingUser && existingUser.name);
+  const phoneNumber = bodyPhoneNumber || (existingUser && existingUser.phone);
   if (!fullName || !phoneNumber) {
     return jsonResponse({ error: "missing_customer_info", detail: "이름/휴대폰번호가 필요해요." }, 400);
   }
@@ -155,6 +164,8 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
       subscription_plan: plan,
       billing_key: billingKey,
       auto_renew: true,
+      cancel_at_period_end: false,
+      pending_plan: null,
       billing_key_issued_at: now,
       next_billing_at: nextBillingAt,
       ...(cardInfo || {}),
@@ -173,20 +184,85 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
   return jsonResponse({ ok: true, paymentId });
 }
 
+// 구독 해지 -- 즉시 끊지 않고, 이미 결제한 기간(next_billing_at)까지는 계속
+// 이용할 수 있게 자동 재결제만 끈다(ChatGPT/Claude 등 흔한 LLM 구독 서비스와
+// 동일한 방식). 실제 구독 종료 처리는 runScheduledBilling의 만료 처리 패스에서
+// 이용 기간이 지난 뒤에 이뤄진다.
 export async function handleCancel(request, env, verifyFirebaseIdToken) {
   const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
   if (error) return error;
 
   try {
     await firestorePatchDoc(env, `users/${user.uid}`, {
-      subscription_status: "canceled",
       auto_renew: false,
-      next_billing_at: null,
+      cancel_at_period_end: true,
     });
   } catch (e) {
     return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
   }
   return jsonResponse({ ok: true });
+}
+
+// 해지 예약 취소(구독 유지하기) -- 아직 이용 기간이 남아있는 동안에는 카드를
+// 다시 등록할 필요 없이 자동 재결제만 다시 켤 수 있다.
+export async function handleResume(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  try {
+    const userDoc = await firestoreGetDoc(env, `users/${user.uid}`);
+    if (!userDoc || userDoc.subscription_status !== "active" || !userDoc.next_billing_at) {
+      return jsonResponse({ error: "not_resumable" }, 400);
+    }
+    await firestorePatchDoc(env, `users/${user.uid}`, {
+      auto_renew: true,
+      cancel_at_period_end: false,
+    });
+  } catch (e) {
+    return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
+  }
+  return jsonResponse({ ok: true });
+}
+
+// 플랜 변경(월간<->연간) -- 이미 구독 중인 사용자가 다른 플랜으로 바꾸고 싶을 때
+// 그 자리에서 다시 결제하지 않고, 지금 이용 중인 기간이 끝나는 다음 결제일부터
+// 새 플랜으로 전환되도록 예약만 해둔다(pending_plan). 실제 전환/청구는
+// runScheduledBilling이 다음 결제일에 처리한다.
+export async function handleChangePlan(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "bad_json" }, 400);
+  }
+  const { plan } = body || {};
+  if (!PLANS[plan]) {
+    return jsonResponse({ error: "invalid_params" }, 400);
+  }
+
+  let userDoc;
+  try {
+    userDoc = await firestoreGetDoc(env, `users/${user.uid}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+  if (!userDoc || userDoc.subscription_status !== "active" || !userDoc.billing_key || !userDoc.next_billing_at) {
+    return jsonResponse({ error: "not_active_subscription" }, 400);
+  }
+  if (userDoc.cancel_at_period_end) {
+    return jsonResponse({ error: "cancellation_pending", detail: "해지 예약을 먼저 취소해 주세요." }, 400);
+  }
+
+  const pendingPlan = plan === userDoc.subscription_plan ? null : plan;
+  try {
+    await firestorePatchDoc(env, `users/${user.uid}`, { pending_plan: pendingPlan });
+  } catch (e) {
+    return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
+  }
+  return jsonResponse({ ok: true, pending_plan: pendingPlan, effective_at: userDoc.next_billing_at });
 }
 
 export async function handleWebhook(request, env) {
@@ -244,6 +320,12 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
   if (url.pathname === "/api/payments/cancel" && request.method === "POST") {
     return handleCancel(request, env, verifyFirebaseIdToken);
   }
+  if (url.pathname === "/api/payments/resume" && request.method === "POST") {
+    return handleResume(request, env, verifyFirebaseIdToken);
+  }
+  if (url.pathname === "/api/payments/change-plan" && request.method === "POST") {
+    return handleChangePlan(request, env, verifyFirebaseIdToken);
+  }
   if (url.pathname === "/api/payments/webhook" && request.method === "POST") {
     return handleWebhook(request, env);
   }
@@ -269,7 +351,8 @@ export async function runScheduledBilling(env) {
 
   for (const userDoc of dueUsers) {
     const uid = userDoc.id;
-    const plan = userDoc.subscription_plan;
+    // 플랜 변경 예약(pending_plan)이 있으면 이번 재결제부터 새 플랜으로 청구한다.
+    const plan = userDoc.pending_plan || userDoc.subscription_plan;
     const billingKey = userDoc.billing_key;
     const planInfo = PLANS[plan];
 
@@ -324,6 +407,8 @@ export async function runScheduledBilling(env) {
           ...(cardInfo || {}),
         });
         await firestorePatchDoc(env, `users/${uid}`, {
+          subscription_plan: plan,
+          pending_plan: null,
           next_billing_at: nextBillingAt,
           last_billing_at: chargedAt,
           ...(cardInfo || {}),
@@ -357,6 +442,45 @@ export async function runScheduledBilling(env) {
       } catch (e) {
         console.error("billing_firestore_update_failed_after_failure", uid, e);
       }
+    }
+  }
+
+  // 해지 예약(cancel_at_period_end)한 사용자 중 이용 기간이 끝난 사람을 실제로
+  // 종료 처리한다. 카드(빌링키)는 더 안 쓸 거라 함께 정리한다(삭제 실패해도
+  // 구독 종료 처리 자체는 계속 진행 -- 화면 표시용 부가 정보라 치명적이지 않음).
+  let dueCancellations;
+  try {
+    dueCancellations = await firestoreQueryDueCancellation(env, now);
+  } catch (e) {
+    console.error("cancellation_query_failed", e);
+    dueCancellations = [];
+  }
+
+  console.log(`[구독만료] 대상 ${dueCancellations.length}명 확인`);
+
+  for (const userDoc of dueCancellations) {
+    const uid = userDoc.id;
+    if (userDoc.billing_key) {
+      try {
+        await deleteBillingKey(env, userDoc.billing_key);
+      } catch (e) {
+        console.error("delete_billing_key_failed", uid, e);
+      }
+    }
+    try {
+      await firestorePatchDoc(env, `users/${uid}`, {
+        subscription_status: "canceled",
+        cancel_at_period_end: false,
+        next_billing_at: null,
+        billing_key: null,
+        card_brand: null,
+        card_name: null,
+        card_number: null,
+        card_issuer: null,
+      });
+      console.log("[구독만료] 처리 완료", uid);
+    } catch (e) {
+      console.error("cancellation_firestore_update_failed", uid, e);
     }
   }
 }
