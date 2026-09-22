@@ -265,6 +265,59 @@ export async function handleChangePlan(request, env, verifyFirebaseIdToken) {
   return jsonResponse({ ok: true, pending_plan: pendingPlan, effective_at: userDoc.next_billing_at });
 }
 
+// 카드 변경 -- 이미 구독 중인 사용자가 등록된 카드만 바꾸고 싶을 때. 새로
+// 발급받은 빌링키로 교체만 하고 그 자리에서 다시 결제(청구)하지는 않는다.
+// 카드 브랜드/마스킹 번호 같은 표시용 정보는 빌링키 발급 응답만으로는 알 수
+// 없어서(실 결제 응답에서만 내려옴) 일단 비워두고, 다음 정기결제 때 새로 채워진다.
+export async function handleUpdateCard(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "bad_json" }, 400);
+  }
+  const { billingKey } = body || {};
+  if (!billingKey) {
+    return jsonResponse({ error: "invalid_params" }, 400);
+  }
+
+  let userDoc;
+  try {
+    userDoc = await firestoreGetDoc(env, `users/${user.uid}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+  if (!userDoc || userDoc.subscription_status !== "active") {
+    return jsonResponse({ error: "not_active_subscription" }, 400);
+  }
+
+  const oldBillingKey = userDoc.billing_key;
+  try {
+    await firestorePatchDoc(env, `users/${user.uid}`, {
+      billing_key: billingKey,
+      card_brand: null,
+      card_name: null,
+      card_number: null,
+      card_issuer: null,
+    });
+  } catch (e) {
+    return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
+  }
+
+  if (oldBillingKey && oldBillingKey !== billingKey) {
+    try {
+      await deleteBillingKey(env, oldBillingKey);
+    } catch (e) {
+      console.error("delete_old_billing_key_failed", user.uid, e);
+    }
+  }
+
+  return jsonResponse({ ok: true });
+}
+
 export async function handleWebhook(request, env) {
   const rawBody = await request.text();
   let event;
@@ -325,6 +378,9 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
   }
   if (url.pathname === "/api/payments/change-plan" && request.method === "POST") {
     return handleChangePlan(request, env, verifyFirebaseIdToken);
+  }
+  if (url.pathname === "/api/payments/update-card" && request.method === "POST") {
+    return handleUpdateCard(request, env, verifyFirebaseIdToken);
   }
   if (url.pathname === "/api/payments/webhook" && request.method === "POST") {
     return handleWebhook(request, env);

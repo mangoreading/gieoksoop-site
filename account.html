@@ -118,6 +118,26 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="customerInfoModalOverlay">
+      <div class="modal-box">
+        <button type="button" class="modal-close" id="customerInfoCloseBtn" aria-label="닫기">&times;</button>
+        <h3>결제 정보 확인</h3>
+        <p class="desc">카드 변경에 필요한 이름과 휴대폰 번호예요. 필요하면 수정할 수 있어요.</p>
+        <div class="form-error" id="customerInfoError"></div>
+        <form id="customerInfoForm">
+          <div class="form-field">
+            <label for="customerInfoName">이름</label>
+            <input type="text" id="customerInfoName" autocomplete="name" required>
+          </div>
+          <div class="form-field">
+            <label for="customerInfoPhone">휴대폰 번호</label>
+            <input type="tel" id="customerInfoPhone" autocomplete="tel" placeholder="01012345678" required>
+          </div>
+          <button type="submit" class="btn btn-outline btn-block" id="customerInfoSubmitBtn">다음</button>
+        </form>
+      </div>
+    </div>
+
     <div class="card" style="max-width:520px;text-align:left;display:none;" id="verifyCard">
       <h2 style="margin-top:0;">이메일 인증이 필요해요</h2>
       <p class="desc"><strong id="verifyEmailLabel">-</strong> 주소가 본인 이메일인지 확인이 필요해요. 이메일 인증을 마쳐야 기억숲의 모든 기능을 이용할 수 있어요.</p>
@@ -168,10 +188,11 @@
     </div>
   </footer>
 
+<script src="https://cdn.portone.io/v2/browser-sdk.js"></script>
 <script type="module">
   import { auth, db, logOut, watchAuthForNav, resendVerificationEmail, changePassword, friendlyAuthError } from './js/auth.js';
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-  import { doc, getDoc, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+  import { doc, getDoc, updateDoc, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
   import { showAlert, showConfirm } from './js/dialog.js';
 
@@ -262,6 +283,164 @@
     return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
   }
 
+  // ---------------- 카드 변경 ----------------
+  // storeId/channelKey는 비밀값이 아니라 프론트엔드에 그대로 노출되는 공개 식별자.
+  const PORTONE_STORE_ID = 'store-9b3f8aa5-ea5a-4941-a366-56d89fdb6ed2';
+  const PORTONE_CHANNEL_KEY = 'channel-key-2c2cfc86-6056-47cb-a1da-9ca271f3035a';
+
+  function friendlyBillingError(rawMessage) {
+    const msg = String(rawMessage || '');
+    if (!msg) return '잠시 후 다시 시도해 주세요.';
+    if (/카드번호|card ?number/i.test(msg)) return '카드번호를 다시 확인해 주세요.';
+    if (/유효\s*기간|expir/i.test(msg)) return '카드 유효기간을 다시 확인해 주세요.';
+    if (/한도|잔액|insufficient/i.test(msg)) return '카드 한도 또는 잔액을 확인해 주세요.';
+    if (/분실|도난|정지|blocked|lost|stolen/i.test(msg)) return '카드사에서 거래를 제한하고 있어요. 카드사에 문의해 주세요.';
+    if (/인증/i.test(msg)) return '본인 인증에 실패했어요. 다시 시도해 주세요.';
+    return '카드사 정책에 따라 결제가 거절됐어요. 다른 카드로 시도하거나 카드사에 문의해 주세요.';
+  }
+
+  function openCustomerInfoModal({ fullName, phoneNumber }) {
+    const overlay = document.getElementById('customerInfoModalOverlay');
+    const form = document.getElementById('customerInfoForm');
+    const nameInput = document.getElementById('customerInfoName');
+    const phoneInput = document.getElementById('customerInfoPhone');
+    const errorEl = document.getElementById('customerInfoError');
+    const closeBtn = document.getElementById('customerInfoCloseBtn');
+
+    nameInput.value = fullName || '';
+    phoneInput.value = phoneNumber || '';
+    errorEl.style.display = 'none';
+
+    return new Promise((resolve) => {
+      function cleanup(result) {
+        overlay.classList.remove('open');
+        form.removeEventListener('submit', onSubmit);
+        closeBtn.removeEventListener('click', onCancel);
+        overlay.removeEventListener('click', onOverlayClick);
+        resolve(result);
+      }
+      function onCancel() {
+        cleanup(null);
+      }
+      function onOverlayClick(e) {
+        if (e.target === overlay) cleanup(null);
+      }
+      function onSubmit(e) {
+        e.preventDefault();
+        const name = nameInput.value.trim();
+        const rawPhone = phoneInput.value.replace(/[^0-9]/g, '');
+        if (!name) {
+          errorEl.textContent = '이름을 입력해 주세요.';
+          errorEl.style.display = 'block';
+          return;
+        }
+        if (!/^01[0-9]{8,9}$/.test(rawPhone)) {
+          errorEl.textContent = '휴대폰 번호 형식이 올바르지 않아요. 숫자만 입력해 주세요. (예: 01012345678)';
+          errorEl.style.display = 'block';
+          return;
+        }
+        cleanup({ fullName: name, phoneNumber: rawPhone });
+      }
+      form.addEventListener('submit', onSubmit);
+      closeBtn.addEventListener('click', onCancel);
+      overlay.addEventListener('click', onOverlayClick);
+      overlay.classList.add('open');
+      nameInput.focus();
+    });
+  }
+
+  async function collectCustomerInfo(user) {
+    let fullName = user.displayName || '';
+    let phoneNumber = '';
+    try {
+      const userSnap = await getDoc(doc(db, 'users', user.uid));
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        if (!fullName) fullName = userData.name || '';
+        phoneNumber = userData.phone || '';
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    const result = await openCustomerInfoModal({ fullName, phoneNumber });
+    if (!result) return null;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), { name: result.fullName, phone: result.phoneNumber });
+    } catch (e) {
+      console.error(e);
+    }
+    return result;
+  }
+
+  async function startCardChange(btn) {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const info = await collectCustomerInfo(user);
+    if (!info) return;
+    const { fullName, phoneNumber } = info;
+
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '카드 등록 창을 여는 중...';
+
+    try {
+      const issueResponse = await window.PortOne.requestIssueBillingKey({
+        storeId: PORTONE_STORE_ID,
+        channelKey: PORTONE_CHANNEL_KEY,
+        billingKeyMethod: 'CARD',
+        issueId: 'bk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        issueName: '기억숲 구독 카드 변경',
+        customer: {
+          customerId: user.uid,
+          fullName: fullName,
+          phoneNumber: phoneNumber,
+          email: user.email || undefined,
+        },
+      });
+
+      if (!issueResponse) return;
+      if (issueResponse.code) {
+        await showAlert(friendlyBillingError(issueResponse.message || issueResponse.code), {
+          title: '카드 등록 실패',
+          icon: { type: 'error', glyph: '!' },
+        });
+        return;
+      }
+
+      btn.textContent = '카드 정보 저장 중...';
+      const idToken = await user.getIdToken();
+      const res = await fetch('/api/payments/update-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ billingKey: issueResponse.billingKey }),
+      });
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (e) {
+        console.error(e);
+      }
+      if (!res.ok || !data || !data.ok) {
+        await showAlert('카드 변경 처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)), {
+          icon: { type: 'error', glyph: '!' },
+        });
+        return;
+      }
+      await showAlert('카드가 변경됐어요. 다음 결제부터 새 카드로 청구됩니다.', {
+        title: '변경 완료',
+        icon: { type: 'success', glyph: '✓' },
+      });
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+      await showAlert('카드 변경 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  }
+
   const CARD_BRAND_LABEL = {
     LOCAL: '국내전용',
     VISA: '비자',
@@ -341,7 +520,13 @@
         desc.textContent = pendingPlan
           ? `현재 ${planLabel(plan)} 플랜을 이용 중이에요. 다음 결제일부터 ${planLabel(pendingPlan)} 플랜으로 전환돼요.`
           : '현재 유료 구독을 이용 중이에요. 해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.';
-        actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn">구독 해지하기</button>`;
+        actionArea.innerHTML = `
+          <button type="button" class="btn btn-outline btn-sm" id="changeCardBtn">카드 변경하기</button>
+          <button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn" style="margin-left:8px;">구독 해지하기</button>
+        `;
+        document.getElementById('changeCardBtn').addEventListener('click', () => {
+          startCardChange(document.getElementById('changeCardBtn'));
+        });
         document.getElementById('cancelSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('cancelSubBtn');
           const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
