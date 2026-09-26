@@ -152,3 +152,20 @@ export function setBtnLoading(btn, loading) {
     btn.classList.remove('btn-loading');
   }
 }
+
+let pgDimEl = null;
+
+function ensurePgDim() {
+  if (pgDimEl) return pgDimEl;
+  pgDimEl = document.createElement('div');
+  pgDimEl.className = 'pg-dim-layer';
+  document.body.appendChild(pgDimEl);
+  return pgDimEl;
+}
+
+// PG(포트원) 결제창을 여는 동안 우리 페이지 배경을 어둡게 깐다. PG 위젯 자체에는
+// 이 옵션이 없어서(KG이니시스는 무시), css의 .pg-dim-layer가 결제창보다 낮은
+// z-index로 깔려 결제창은 선명하게, 배경만 어두워 보이게 한다.
+export function setPgDim(show) {
+  ensurePgDim().classList.toggle('show', show);
+}

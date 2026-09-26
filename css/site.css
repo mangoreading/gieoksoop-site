@@ -376,6 +376,13 @@ form.signup button:hover{background:var(--accent-strong);}
 .btn-outline.btn-loading::after{border-color:rgba(44,36,25,.2);border-top-color:var(--ink-dim);}
 @keyframes btn-spin{to{transform:rotate(360deg);}}
 
+/* ---------- 결제창(PG) 배경 딤 처리 ----------
+   PG 위젯 자체에는 배경을 어둡게 하는 옵션이 없어서(KG이니시스는 무시함),
+   대신 우리 페이지 쪽에서 PG 창보다 훨씬 낮은 z-index로 배경만 어둡게 깔아
+   결제창이 그 위에 떠 있는 것처럼 보이게 한다. */
+.pg-dim-layer{position:fixed;inset:0;background:rgba(20,15,8,.55);z-index:10;display:none;}
+.pg-dim-layer.show{display:block;}
+
 /* ---------- Footer (mangoreading.com 포맷 참고, 색상은 기억숲 팔레트로) ---------- */
 footer{
   border-top:3px solid var(--accent);

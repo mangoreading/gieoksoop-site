@@ -194,7 +194,7 @@
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { doc, getDoc, updateDoc, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
-  import { showAlert, showConfirm, showRetryableError, setBtnLoading } from './js/dialog.js';
+  import { showAlert, showConfirm, showRetryableError, setBtnLoading, setPgDim } from './js/dialog.js';
 
   watchAuthForNav();
   initLangToggle();
@@ -384,6 +384,7 @@
   async function runCardChange({ fullName, phoneNumber }, btn) {
     const user = auth.currentUser;
     setBtnLoading(btn, true);
+    setPgDim(true);
 
     try {
       const issueResponse = await window.PortOne.requestIssueBillingKey({
@@ -436,6 +437,7 @@
       const retry = await showRetryableError('카드 변경 중 문제가 발생했어요: ' + (e.message || e));
       if (retry) return runCardChange({ fullName, phoneNumber }, btn);
     } finally {
+      setPgDim(false);
       setBtnLoading(btn, false);
     }
   }

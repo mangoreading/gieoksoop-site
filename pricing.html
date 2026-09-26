@@ -175,7 +175,7 @@
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
-  import { showAlert, showConfirm, showReceipt, showRetryableError, renderSummaryRows, setBtnLoading } from './js/dialog.js';
+  import { showAlert, showConfirm, showReceipt, showRetryableError, renderSummaryRows, setBtnLoading, setPgDim } from './js/dialog.js';
 
   watchAuthForNav();
   initLangToggle();
@@ -449,6 +449,7 @@
   async function runSubscriptionCharge(plan, { fullName, phoneNumber }, btn) {
     const user = auth.currentUser;
     subscribeButtons.forEach((b) => setBtnLoading(b, true));
+    setPgDim(true);
 
     try {
       const issueResponse = await window.PortOne.requestIssueBillingKey({
@@ -517,6 +518,7 @@
       const retry = await showRetryableError('카드 등록 중 문제가 발생했어요: ' + (e.message || e));
       if (retry) return runSubscriptionCharge(plan, { fullName, phoneNumber }, btn);
     } finally {
+      setPgDim(false);
       subscribeButtons.forEach((b) => setBtnLoading(b, false));
     }
   }
