@@ -13,13 +13,33 @@ function ensureOverlay() {
       <div class="dialog-icon" id="dlgIcon" style="display:none;"></div>
       <h3 id="dlgTitle"></h3>
       <p class="desc" id="dlgMessage" style="white-space:pre-line;"></p>
+      <div class="summary-box" id="dlgSummary" style="display:none;"></div>
       <div class="modal-actions" id="dlgActions"></div>
     </div>`;
   document.body.appendChild(overlayEl);
   return overlayEl;
 }
 
-function openDialog({ title, message, icon, buttons }) {
+// rows: [{ k, v, strong? }] -- 결제 확인/영수증처럼 key-value 요약을 보여줄 때 쓴다.
+// textContent만 사용해서 안전하게 렌더링한다.
+export function renderSummaryRows(container, rows) {
+  container.innerHTML = '';
+  (rows || []).forEach((r) => {
+    const row = document.createElement('div');
+    row.className = 'row' + (r.strong ? ' total' : '');
+    const k = document.createElement('span');
+    k.className = 'k';
+    k.textContent = r.k;
+    const v = document.createElement('span');
+    v.className = 'v';
+    v.textContent = r.v;
+    row.appendChild(k);
+    row.appendChild(v);
+    container.appendChild(row);
+  });
+}
+
+function openDialog({ title, message, icon, buttons, summaryRows }) {
   const overlay = ensureOverlay();
   const iconEl = overlay.querySelector('#dlgIcon');
   if (icon) {
@@ -31,6 +51,13 @@ function openDialog({ title, message, icon, buttons }) {
   }
   overlay.querySelector('#dlgTitle').textContent = title || '';
   overlay.querySelector('#dlgMessage').textContent = message || '';
+  const summaryEl = overlay.querySelector('#dlgSummary');
+  if (summaryRows && summaryRows.length) {
+    renderSummaryRows(summaryEl, summaryRows);
+    summaryEl.style.display = '';
+  } else {
+    summaryEl.style.display = 'none';
+  }
   const actions = overlay.querySelector('#dlgActions');
   actions.innerHTML = '';
 
@@ -65,6 +92,7 @@ export function showAlert(message, opts = {}) {
     title: opts.title || '알림',
     message,
     icon: opts.icon,
+    summaryRows: opts.summaryRows,
     buttons: [{ label: opts.okText || '확인', className: 'btn btn-primary btn-sm', value: true }],
   });
 }
@@ -84,4 +112,43 @@ export function showConfirm(message, opts = {}) {
       },
     ],
   });
+}
+
+// 결제 완료 등, 금액/플랜/다음 결제일 같은 요약 정보를 함께 보여주는 완료 안내.
+// summaryRows: [{ k, v, strong? }]
+export function showReceipt(message, summaryRows, opts = {}) {
+  return openDialog({
+    title: opts.title || '완료',
+    message,
+    icon: opts.icon || { type: 'success', glyph: '✓' },
+    summaryRows,
+    buttons: [{ label: opts.okText || '확인', className: 'btn btn-primary btn-sm', value: true }],
+  });
+}
+
+// 결제/카드 처리 실패 시 "다시 시도" 버튼을 함께 보여주는 에러 모달.
+// Promise<boolean> 반환 -- true면 재시도를 선택한 것.
+export function showRetryableError(message, opts = {}) {
+  return openDialog({
+    title: opts.title || '오류',
+    message,
+    icon: opts.icon || { type: 'error', glyph: '!' },
+    buttons: [
+      { label: opts.closeText || '닫기', className: 'btn btn-outline btn-sm', value: false },
+      { label: opts.retryText || '다시 시도', className: 'btn btn-primary btn-sm', value: true },
+    ],
+  });
+}
+
+// 버튼에 로딩 상태(스피너 + 비활성화)를 적용/해제한다. 텍스트는 그대로 두고
+// 시각적으로만 숨긴 뒤 스피너를 보여줘서, 버튼 크기가 흔들리지 않게 한다.
+export function setBtnLoading(btn, loading) {
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true;
+    btn.classList.add('btn-loading');
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+  }
 }

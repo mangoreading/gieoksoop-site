@@ -354,6 +354,28 @@ form.signup button:hover{background:var(--accent-strong);}
 .dialog-icon.success{background:var(--ok-bg);color:var(--ok);}
 .dialog-icon.error{background:var(--danger-bg);color:var(--danger);}
 
+/* ---------- 결제 확인 요약 / 영수증 ---------- */
+.summary-box{background:var(--paper);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;margin:0 0 18px;}
+.summary-box .row{display:flex;justify-content:space-between;align-items:center;font-size:13.5px;color:var(--ink-dim);padding:6px 0;}
+.summary-box .row:not(:last-child){border-bottom:1px dashed var(--border);}
+.summary-box .row .v{color:var(--ink);font-weight:600;}
+.summary-box .row.total .v{color:var(--accent-strong);font-size:15.5px;}
+
+/* ---------- 버튼 로딩 상태(스피너) ---------- */
+.btn-loading{position:relative;color:transparent !important;pointer-events:none;}
+.btn-loading::after{
+  content:"";
+  position:absolute;top:50%;left:50%;
+  width:16px;height:16px;
+  margin:-8px 0 0 -8px;
+  border:2px solid rgba(255,255,255,.45);
+  border-top-color:#fff;
+  border-radius:50%;
+  animation:btn-spin .6s linear infinite;
+}
+.btn-outline.btn-loading::after{border-color:rgba(44,36,25,.2);border-top-color:var(--ink-dim);}
+@keyframes btn-spin{to{transform:rotate(360deg);}}
+
 /* ---------- Footer (mangoreading.com 포맷 참고, 색상은 기억숲 팔레트로) ---------- */
 footer{
   border-top:3px solid var(--accent);

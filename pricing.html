@@ -117,22 +117,27 @@
       월간⟷연간 플랜 전환은 지금 이용 중인 기간이 끝나는 다음 결제일부터 적용돼요.
     </p>
 
-    <div class="modal-overlay" id="customerInfoModalOverlay">
+    <div class="modal-overlay" id="checkoutModalOverlay">
       <div class="modal-box">
-        <button type="button" class="modal-close" id="customerInfoCloseBtn" aria-label="닫기">&times;</button>
-        <h3>결제 정보 입력</h3>
-        <p class="desc">정기결제 등록을 위해 이름과 휴대폰 번호가 필요해요. 다음부터는 다시 입력하지 않아도 돼요.</p>
-        <div class="form-error" id="customerInfoError"></div>
-        <form id="customerInfoForm">
+        <button type="button" class="modal-close" id="checkoutCloseBtn" aria-label="닫기">&times;</button>
+        <h3>구독 확인</h3>
+        <p class="desc">아래 내용으로 정기결제가 시작돼요. 카드 등록 후 바로 첫 결제가 진행됩니다.</p>
+        <div class="summary-box" id="checkoutSummary"></div>
+        <div class="form-error" id="checkoutError"></div>
+        <form id="checkoutForm">
           <div class="form-field">
-            <label for="customerInfoName">이름</label>
-            <input type="text" id="customerInfoName" autocomplete="name" required>
+            <label for="checkoutName">이름</label>
+            <input type="text" id="checkoutName" autocomplete="name" required>
           </div>
           <div class="form-field">
-            <label for="customerInfoPhone">휴대폰 번호</label>
-            <input type="tel" id="customerInfoPhone" autocomplete="tel" placeholder="01012345678" required>
+            <label for="checkoutPhone">휴대폰 번호</label>
+            <input type="tel" id="checkoutPhone" autocomplete="tel" placeholder="01012345678" required>
           </div>
-          <button type="submit" class="btn btn-accent btn-block" id="customerInfoSubmitBtn">다음</button>
+          <label class="form-check">
+            <input type="checkbox" id="checkoutAgree" required>
+            <span>정기결제 진행 및 <a href="terms.html" target="_blank" rel="noopener">이용약관</a> · <a href="privacy.html" target="_blank" rel="noopener">환불 정책</a>에 동의해요.</span>
+          </label>
+          <button type="submit" class="btn btn-accent btn-block" id="checkoutSubmitBtn">결제하기</button>
         </form>
       </div>
     </div>
@@ -170,7 +175,7 @@
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
-  import { showAlert, showConfirm } from './js/dialog.js';
+  import { showAlert, showConfirm, showReceipt, showRetryableError, renderSummaryRows, setBtnLoading } from './js/dialog.js';
 
   watchAuthForNav();
   initLangToggle();
@@ -188,9 +193,29 @@
   }
 
   const PLAN_DISPLAY = {
-    monthly: { issueName: '기억숲 구독 카드 등록 (월간)', korean: '월간' },
-    annual: { issueName: '기억숲 구독 카드 등록 (연간)', korean: '연간' },
+    monthly: { issueName: '기억숲 구독 카드 등록 (월간)', korean: '월간', amount: 3000, months: 1 },
+    annual: { issueName: '기억숲 구독 카드 등록 (연간)', korean: '연간', amount: 28000, months: 12 },
   };
+
+  // 결제 확인 모달/영수증에 쓰는 요약 행. 실제 청구 금액/기간은 서버가 최종 확정하지만,
+  // 화면에는 클라이언트에서 계산한 예상값을 보여준다.
+  function planSummaryRows(plan) {
+    const info = PLAN_DISPLAY[plan];
+    return [
+      { k: '플랜', v: info.korean },
+      { k: '결제 금액', v: info.amount.toLocaleString() + '원' },
+      { k: '결제 주기', v: plan === 'annual' ? '매년 자동 결제' : '매달 자동 결제', strong: true },
+    ];
+  }
+
+  function addMonthsLocal(date, months) {
+    const d = new Date(date);
+    d.setMonth(d.getMonth() + months);
+    return d;
+  }
+  function fmtDateLocal(d) {
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  }
 
   // 포트원(PortOne) V2 빌링키(정기결제용 카드 등록) 발급.
   // storeId/channelKey는 비밀값이 아니라 프론트엔드에 그대로 노출되는 공개 식별자.
@@ -211,19 +236,25 @@
     return '카드사 정책에 따라 결제가 거절됐어요. 다른 카드로 시도하거나 카드사에 문의해 주세요.';
   }
 
-  // 이름/휴대폰 번호 입력 모달 -- 정기결제(빌링키) 등록에 필요한 최소 정보를
-  // window.prompt() 대신 페이지 톤에 맞는 폼으로 받는다.
-  function openCustomerInfoModal({ fullName, phoneNumber }) {
-    const overlay = document.getElementById('customerInfoModalOverlay');
-    const form = document.getElementById('customerInfoForm');
-    const nameInput = document.getElementById('customerInfoName');
-    const phoneInput = document.getElementById('customerInfoPhone');
-    const errorEl = document.getElementById('customerInfoError');
-    const closeBtn = document.getElementById('customerInfoCloseBtn');
+  // 결제 확인 모달 -- 플랜/금액 요약 + 이름/휴대폰 번호 입력 + 약관 동의를 한 화면에서 받는다.
+  // 이미 알고 있는 이름/번호가 있어도, 결제 전 마지막 확인 단계로 매번 띄운다.
+  function openCheckoutModal(plan, { fullName, phoneNumber }) {
+    const overlay = document.getElementById('checkoutModalOverlay');
+    const form = document.getElementById('checkoutForm');
+    const nameInput = document.getElementById('checkoutName');
+    const phoneInput = document.getElementById('checkoutPhone');
+    const agreeInput = document.getElementById('checkoutAgree');
+    const errorEl = document.getElementById('checkoutError');
+    const closeBtn = document.getElementById('checkoutCloseBtn');
+    const summaryEl = document.getElementById('checkoutSummary');
+    const submitBtn = document.getElementById('checkoutSubmitBtn');
 
     nameInput.value = fullName || '';
     phoneInput.value = phoneNumber || '';
+    agreeInput.checked = false;
     errorEl.style.display = 'none';
+    renderSummaryRows(summaryEl, planSummaryRows(plan));
+    setBtnLoading(submitBtn, false);
 
     return new Promise((resolve) => {
       function cleanup(result) {
@@ -253,6 +284,12 @@
           errorEl.style.display = 'block';
           return;
         }
+        if (!agreeInput.checked) {
+          errorEl.textContent = '정기결제 및 약관 동의가 필요해요.';
+          errorEl.style.display = 'block';
+          return;
+        }
+        errorEl.style.display = 'none';
         cleanup({ fullName: name, phoneNumber: rawPhone });
       }
       form.addEventListener('submit', onSubmit);
@@ -263,9 +300,9 @@
     });
   }
 
-  // 포트원(KG이니시스) 빌링키 발급에는 이름/휴대폰 번호가 필수라, 없으면 모달로
-  // 한 번만 물어보고 Firestore에 저장해둔다(다음부터는 다시 안 물어봄).
-  async function collectCustomerInfo(user) {
+  // 포트원(KG이니시스) 빌링키 발급에는 이름/휴대폰 번호가 필수. 이미 저장된 값이 있으면
+  // 모달에 미리 채워두되, 결제 확인 + 약관 동의를 위해 모달 자체는 매번 띄운다.
+  async function collectCheckoutInfo(plan, user) {
     let fullName = user.displayName || '';
     let phoneNumber = '';
     try {
@@ -279,11 +316,7 @@
       console.error(e);
     }
 
-    if (fullName && phoneNumber) {
-      return { fullName, phoneNumber };
-    }
-
-    const result = await openCustomerInfoModal({ fullName, phoneNumber });
+    const result = await openCheckoutModal(plan, { fullName, phoneNumber });
     if (!result) return null;
     try {
       await updateDoc(doc(db, 'users', user.uid), { name: result.fullName, phone: result.phoneNumber });
@@ -367,9 +400,11 @@
     });
     if (!confirmed) return;
 
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '처리 중...';
+    return runChangePlan(targetPlan, isCancelingPending, btn);
+  }
+
+  async function runChangePlan(targetPlan, isCancelingPending, btn) {
+    setBtnLoading(btn, true);
     try {
       const user = auth.currentUser;
       const idToken = await user.getIdToken();
@@ -385,11 +420,9 @@
         console.error(e);
       }
       if (!res.ok || !data || !data.ok) {
-        await showAlert('처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)), {
-          icon: { type: 'error', glyph: '!' },
-        });
-        btn.disabled = false;
-        btn.textContent = originalText;
+        const retry = await showRetryableError('처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)));
+        if (retry) return runChangePlan(targetPlan, isCancelingPending, btn);
+        setBtnLoading(btn, false);
         return;
       }
       await showAlert(isCancelingPending ? '전환 예약이 취소됐어요.' : '플랜 전환이 예약됐어요.', {
@@ -399,23 +432,23 @@
       window.location.reload();
     } catch (e) {
       console.error(e);
-      await showAlert('처리 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
-      btn.disabled = false;
-      btn.textContent = originalText;
+      const retry = await showRetryableError('처리 중 문제가 발생했어요: ' + (e.message || e));
+      if (retry) return runChangePlan(targetPlan, isCancelingPending, btn);
+      setBtnLoading(btn, false);
     }
   }
 
   // 신규 구독(또는 해지 후 재구독) -- 빌링키를 새로 발급하고 즉시 첫 결제를 진행한다.
   async function startNewSubscription(plan, btn) {
     const user = auth.currentUser;
-
-    const info = await collectCustomerInfo(user);
+    const info = await collectCheckoutInfo(plan, user);
     if (!info) return;
-    const { fullName, phoneNumber } = info;
+    return runSubscriptionCharge(plan, info, btn);
+  }
 
-    const originalText = btn.textContent;
-    subscribeButtons.forEach((b) => { b.disabled = true; });
-    btn.textContent = '카드 등록 창을 여는 중...';
+  async function runSubscriptionCharge(plan, { fullName, phoneNumber }, btn) {
+    const user = auth.currentUser;
+    subscribeButtons.forEach((b) => setBtnLoading(b, true));
 
     try {
       const issueResponse = await window.PortOne.requestIssueBillingKey({
@@ -430,6 +463,10 @@
           phoneNumber: phoneNumber,
           email: user.email || undefined,
         },
+        // 결제창을 별도 팝업 대신 페이지 내 iframe으로 띄워서 이탈감을 줄인다.
+        // (2026.09.26: KG이니시스 호환성 확인 후 적용 -- 문제가 생기면 이 두 줄만 지우면 원복된다.)
+        windowType: { pc: 'IFRAME' },
+        iframe: { dim: false },
       });
 
       if (!issueResponse) {
@@ -437,15 +474,14 @@
         return;
       }
       if (issueResponse.code) {
-        await showAlert(friendlyBillingError(issueResponse.message || issueResponse.code), {
+        const retry = await showRetryableError(friendlyBillingError(issueResponse.message || issueResponse.code), {
           title: '카드 등록 실패',
-          icon: { type: 'error', glyph: '!' },
         });
+        if (retry) return runSubscriptionCharge(plan, { fullName, phoneNumber }, btn);
         return;
       }
 
       // 카드 등록(빌링키 발급)에 이어 서버에 첫 결제를 요청하고 구독 상태를 활성화한다.
-      btn.textContent = '결제 처리 중...';
       const idToken = await user.getIdToken();
       const subscribeRes = await fetch('/api/payments/subscribe', {
         method: 'POST',
@@ -472,18 +508,20 @@
       if (subscribeData.warning) {
         await showAlert(subscribeData.warning, { icon: { type: 'success', glyph: '✓' } });
       } else {
-        await showAlert(
-          '구독 결제가 완료됐어요! ' + (plan === 'annual' ? '매년' : '매달') + ' 자동으로 결제됩니다.',
-          { title: '구독 완료', icon: { type: 'success', glyph: '✓' } }
-        );
+        const nextBillingStr = fmtDateLocal(addMonthsLocal(new Date(), PLAN_DISPLAY[plan].months));
+        await showReceipt('구독 결제가 완료됐어요.', [
+          { k: '플랜', v: PLAN_DISPLAY[plan].korean },
+          { k: '결제 금액', v: PLAN_DISPLAY[plan].amount.toLocaleString() + '원' },
+          { k: '다음 결제일', v: nextBillingStr, strong: true },
+        ], { title: '구독 완료' });
       }
       window.location.reload();
     } catch (e) {
       console.error(e);
-      await showAlert('카드 등록 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
+      const retry = await showRetryableError('카드 등록 중 문제가 발생했어요: ' + (e.message || e));
+      if (retry) return runSubscriptionCharge(plan, { fullName, phoneNumber }, btn);
     } finally {
-      subscribeButtons.forEach((b) => { b.disabled = false; });
-      btn.textContent = originalText;
+      subscribeButtons.forEach((b) => setBtnLoading(b, false));
     }
   }
 

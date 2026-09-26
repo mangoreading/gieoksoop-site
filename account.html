@@ -194,7 +194,7 @@
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { doc, getDoc, updateDoc, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
-  import { showAlert, showConfirm } from './js/dialog.js';
+  import { showAlert, showConfirm, showRetryableError, setBtnLoading } from './js/dialog.js';
 
   watchAuthForNav();
   initLangToggle();
@@ -378,11 +378,12 @@
 
     const info = await collectCustomerInfo(user);
     if (!info) return;
-    const { fullName, phoneNumber } = info;
+    return runCardChange(info, btn);
+  }
 
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = '카드 등록 창을 여는 중...';
+  async function runCardChange({ fullName, phoneNumber }, btn) {
+    const user = auth.currentUser;
+    setBtnLoading(btn, true);
 
     try {
       const issueResponse = await window.PortOne.requestIssueBillingKey({
@@ -397,18 +398,21 @@
           phoneNumber: phoneNumber,
           email: user.email || undefined,
         },
+        // 결제창을 별도 팝업 대신 페이지 내 iframe으로 띄워서 이탈감을 줄인다.
+        // (2026.09.26: KG이니시스 호환성 확인 후 적용 -- 문제가 생기면 이 두 줄만 지우면 원복된다.)
+        windowType: { pc: 'IFRAME' },
+        iframe: { dim: false },
       });
 
       if (!issueResponse) return;
       if (issueResponse.code) {
-        await showAlert(friendlyBillingError(issueResponse.message || issueResponse.code), {
+        const retry = await showRetryableError(friendlyBillingError(issueResponse.message || issueResponse.code), {
           title: '카드 등록 실패',
-          icon: { type: 'error', glyph: '!' },
         });
+        if (retry) return runCardChange({ fullName, phoneNumber }, btn);
         return;
       }
 
-      btn.textContent = '카드 정보 저장 중...';
       const idToken = await user.getIdToken();
       const res = await fetch('/api/payments/update-card', {
         method: 'POST',
@@ -422,9 +426,8 @@
         console.error(e);
       }
       if (!res.ok || !data || !data.ok) {
-        await showAlert('카드 변경 처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)), {
-          icon: { type: 'error', glyph: '!' },
-        });
+        const retry = await showRetryableError('카드 변경 처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)));
+        if (retry) return runCardChange({ fullName, phoneNumber }, btn);
         return;
       }
       await showAlert('카드가 변경됐어요. 다음 결제부터 새 카드로 청구됩니다.', {
@@ -434,10 +437,10 @@
       window.location.reload();
     } catch (e) {
       console.error(e);
-      await showAlert('카드 변경 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
+      const retry = await showRetryableError('카드 변경 중 문제가 발생했어요: ' + (e.message || e));
+      if (retry) return runCardChange({ fullName, phoneNumber }, btn);
     } finally {
-      btn.disabled = false;
-      btn.textContent = originalText;
+      setBtnLoading(btn, false);
     }
   }
 
@@ -536,9 +539,11 @@
             { title: '구독 해지', okText: '해지하기', danger: true }
           );
           if (!confirmed) return;
-          const originalLabel = btn.textContent;
-          btn.disabled = true;
-          btn.textContent = '해지 처리 중...';
+          await runCancelSubscription(btn, untilStr);
+        });
+
+        async function runCancelSubscription(btn, untilStr) {
+          setBtnLoading(btn, true);
           try {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/payments/cancel', {
@@ -552,9 +557,9 @@
               // 응답 바디가 없어도 상태 코드로 판단
             }
             if (!res.ok || !resData || !resData.ok) {
-              await showAlert('구독 해지 처리 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요.', { icon: { type: 'error', glyph: '!' } });
-              btn.disabled = false;
-              btn.textContent = originalLabel;
+              const retry = await showRetryableError('구독 해지 처리 중 문제가 발생했어요.');
+              if (retry) return runCancelSubscription(btn, untilStr);
+              setBtnLoading(btn, false);
               return;
             }
             await showAlert(
@@ -564,11 +569,11 @@
             window.location.reload();
           } catch (e) {
             console.error(e);
-            await showAlert('구독 해지 처리 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
-            btn.disabled = false;
-            btn.textContent = originalLabel;
+            const retry = await showRetryableError('구독 해지 처리 중 문제가 발생했어요: ' + (e.message || e));
+            if (retry) return runCancelSubscription(btn, untilStr);
+            setBtnLoading(btn, false);
           }
-        });
+        }
       } else {
         pill.textContent = '해지 예정';
         pill.className = 'status-pill canceled';
@@ -582,9 +587,11 @@
             okText: '유지하기',
           });
           if (!confirmed) return;
-          const originalLabel = btn.textContent;
-          btn.disabled = true;
-          btn.textContent = '처리 중...';
+          await runResumeSubscription(btn);
+        });
+
+        async function runResumeSubscription(btn) {
+          setBtnLoading(btn, true);
           try {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/payments/resume', {
@@ -598,20 +605,20 @@
               // 응답 바디가 없어도 상태 코드로 판단
             }
             if (!res.ok || !resData || !resData.ok) {
-              await showAlert('처리 중 문제가 발생했어요. 잠시 후 다시 시도해 주세요.', { icon: { type: 'error', glyph: '!' } });
-              btn.disabled = false;
-              btn.textContent = originalLabel;
+              const retry = await showRetryableError('처리 중 문제가 발생했어요.');
+              if (retry) return runResumeSubscription(btn);
+              setBtnLoading(btn, false);
               return;
             }
             await showAlert('구독을 계속 이용하실 수 있어요.', { title: '완료', icon: { type: 'success', glyph: '✓' } });
             window.location.reload();
           } catch (e) {
             console.error(e);
-            await showAlert('처리 중 문제가 발생했어요: ' + (e.message || e), { icon: { type: 'error', glyph: '!' } });
-            btn.disabled = false;
-            btn.textContent = originalLabel;
+            const retry = await showRetryableError('처리 중 문제가 발생했어요: ' + (e.message || e));
+            if (retry) return runResumeSubscription(btn);
+            setBtnLoading(btn, false);
           }
-        });
+        }
       }
     } else if (status === 'canceled') {
       pill.textContent = '해지됨';
