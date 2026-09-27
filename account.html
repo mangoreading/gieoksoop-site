@@ -2,6 +2,20 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+<script>
+  // 로그인 상태 힌트(직전 세션의 마지막 상태를 로컬에 캐시) -- 페이지 이동/새로고침 시
+  // Firebase 인증 확인이 끝나기 전까지 nav의 로그인/내 계정 표시가 잠깐 틀리게
+  // 보이는(깜빡임) 것을 막는다. 실제 상태는 js/auth.js의 watchAuthForNav()가
+  // 곧이어 다시 확정해서 맞춰준다.
+  (function(){
+    try{
+      var known = localStorage.getItem('gieoksoop_auth_hint') === '1';
+      document.documentElement.classList.add(known ? 'auth-hint-user' : 'auth-hint-guest');
+    }catch(e){
+      document.documentElement.classList.add('auth-hint-guest');
+    }
+  })();
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>내 계정 — 기억숲</title>
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
@@ -33,7 +47,7 @@
       <a href="pricing.html">구독결제</a>
       <a href="download.html" class="hide-mobile">다운로드</a>
       <a href="login.html" data-auth="guest">로그인</a>
-      <div class="nav-account" data-auth="user" style="display:none">
+      <div class="nav-account" data-auth="user">
         <button type="button" class="nav-account-btn" id="navAccountBtn">내 계정</button>
         <div class="nav-account-menu" id="navAccountMenu">
           <a href="account.html" data-auth="verified" style="display:none">계정관리</a>

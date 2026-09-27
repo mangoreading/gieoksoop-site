@@ -141,6 +141,14 @@ a{color:var(--blue);}
 .sitenav .links a.cta:hover{background:var(--blue);}
 .sitenav .menu-toggle{display:none;}
 
+/* ---------- 로그인 상태 힌트(nav 깜빡임 방지) ----------
+   실제 로그인 여부가 확인되기 전까지는 로그인/내 계정 항목을 모두 숨겨두고,
+   head의 힌트 스크립트가 붙여준 html.auth-hint-* 클래스로 먼저 "그럴듯한 쪽"만
+   보여준다. watchAuthForNav()가 실제 상태로 다시 확정한다. */
+[data-auth="guest"], [data-auth="user"]{display:none;}
+html.auth-hint-guest [data-auth="guest"]{display:block;}
+html.auth-hint-user [data-auth="user"]{display:block;}
+
 @media (max-width:640px){
   .sitenav .links{gap:12px;font-size:13.5px;}
   .sitenav .links .hide-mobile{display:none;}

@@ -103,6 +103,13 @@ export async function changePassword(currentPassword, newPassword) {
 // 로그인 여부에 따라 보이고/숨겨집니다.
 export function watchAuthForNav() {
   onAuthStateChanged(auth, (user) => {
+    // 다음 페이지 로드 때 nav가 깜빡이지 않도록 마지막으로 확인된 로그인 상태를 캐시해둔다.
+    try {
+      if (user) localStorage.setItem('gieoksoop_auth_hint', '1');
+      else localStorage.removeItem('gieoksoop_auth_hint');
+    } catch (e) {
+      // localStorage를 못 쓰는 환경이면 힌트 없이(기본: 게스트) 그냥 진행
+    }
     document.querySelectorAll('[data-auth="guest"]').forEach((el) => {
       el.style.display = user ? "none" : "";
     });
