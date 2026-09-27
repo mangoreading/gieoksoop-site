@@ -48,11 +48,11 @@ a{color:var(--blue);}
 /* ---------- Site nav ---------- */
 .sitenav{
   border-bottom:1px solid var(--border);
-  background:rgba(255,252,246,.9);
+  background:var(--paper);
   position:sticky;
   top:0;
   z-index:20;
-  backdrop-filter:saturate(150%) blur(6px);
+  box-shadow:0 2px 12px rgba(70,52,25,.06);
 }
 .sitenav .wrap{
   display:flex;
