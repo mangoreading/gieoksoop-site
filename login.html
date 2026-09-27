@@ -33,7 +33,14 @@
       <a href="pricing.html">구독결제</a>
       <a href="download.html" class="hide-mobile">다운로드</a>
       <a href="login.html" data-auth="guest">로그인</a>
-      <a href="account.html" data-auth="user" style="display:none">내 계정</a>
+      <div class="nav-account" data-auth="user" style="display:none">
+        <button type="button" class="nav-account-btn" id="navAccountBtn">내 계정</button>
+        <div class="nav-account-menu" id="navAccountMenu">
+          <a href="account.html" data-auth="verified" style="display:none">계정관리</a>
+          <a href="account.html?tab=subscription" data-auth="verified" style="display:none">구독관리</a>
+          <button type="button" class="nav-account-logout" id="navLogoutBtn">로그아웃</button>
+        </div>
+      </div>
       <div class="lang-toggle">
         <button type="button" data-lang-btn="ko" class="active">KR</button>
         <button type="button" data-lang-btn="en">EN</button>
@@ -95,9 +102,10 @@
   </footer>
 
 <script type="module">
-  import { logIn, watchAuthForNav, friendlyAuthError } from './js/auth.js';
+  import { logIn, watchAuthForNav, friendlyAuthError, initAccountMenu } from './js/auth.js';
   import { initLangToggle } from './js/i18n.js';
   watchAuthForNav();
+  initAccountMenu();
   initLangToggle();
 
   // PC 앱 로그인 연동: ?callback_port= 가 있으면 회원가입/비밀번호 찾기 전환 링크와

@@ -146,6 +146,64 @@ a{color:var(--blue);}
   .sitenav .links .hide-mobile{display:none;}
 }
 
+/* ---------- Nav account dropdown ---------- */
+.nav-account{position:relative;}
+.nav-account-btn{
+  font-family:var(--font);
+  font-size:14.5px;
+  font-weight:600;
+  color:var(--ink-dim);
+  background:none;
+  border:none;
+  padding:0;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+.nav-account-btn:hover{color:var(--navy);}
+.nav-account-btn::after{
+  content:'';
+  width:0;height:0;
+  border-left:4px solid transparent;
+  border-right:4px solid transparent;
+  border-top:5px solid currentColor;
+  opacity:.6;
+}
+.nav-account-menu{
+  position:absolute;
+  top:calc(100% + 14px);
+  right:0;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+  box-shadow:var(--shadow);
+  padding:6px;
+  min-width:150px;
+  display:none;
+  flex-direction:column;
+  z-index:25;
+}
+.nav-account-menu.open{display:flex;}
+.nav-account-menu a,.nav-account-menu button{
+  display:block;
+  width:100%;
+  text-align:left;
+  font-family:var(--font);
+  font-size:14px;
+  font-weight:600;
+  color:var(--ink-dim);
+  background:none;
+  border:none;
+  padding:9px 12px;
+  border-radius:8px;
+  cursor:pointer;
+  text-decoration:none;
+}
+.nav-account-menu a:hover,.nav-account-menu button:hover{background:var(--bg);color:var(--navy);}
+.nav-account-menu .nav-account-logout{margin-top:4px;padding-top:10px;border-top:1px solid var(--border);color:var(--danger);}
+.nav-account-menu .nav-account-logout:hover{background:var(--danger-bg);color:var(--danger);}
+
 /* ---------- Page header (non-hero pages) ---------- */
 .page-head{
   padding:56px 24px 8px;
@@ -339,6 +397,25 @@ form.signup button:hover{background:var(--accent-strong);}
 .sub-table td{padding:8px;border-bottom:1px solid var(--border);color:var(--ink-dim);}
 .sub-table tr:last-child td{border-bottom:none;}
 .sub-table td.empty{color:var(--ink-faint);padding:14px 8px;text-align:center;}
+
+/* ---------- Account page tabs (계정관리 / 구독관리) ---------- */
+.account-tabs{display:flex;gap:20px;margin-bottom:26px;border-bottom:1px solid var(--border);}
+.account-tabs button{
+  font-family:var(--font);
+  font-size:14.5px;
+  font-weight:700;
+  color:var(--ink-faint);
+  background:none;
+  border:none;
+  padding:10px 2px 12px;
+  cursor:pointer;
+  border-bottom:2px solid transparent;
+  margin-bottom:-1px;
+}
+.account-tabs button.active{color:var(--navy);border-bottom-color:var(--accent);}
+.account-tabs button:hover{color:var(--navy);}
+.account-tab-panel{display:none;}
+.account-tab-panel.active{display:block;}
 
 /* ---------- 모달(비밀번호 변경 등) ---------- */
 .modal-overlay{position:fixed;inset:0;background:rgba(30,42,60,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:100;}

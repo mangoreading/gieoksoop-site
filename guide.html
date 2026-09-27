@@ -19,7 +19,14 @@
       <a href="pricing.html">구독결제</a>
       <a href="download.html" class="hide-mobile">다운로드</a>
       <a href="login.html" data-auth="guest">로그인</a>
-      <a href="account.html" data-auth="user" style="display:none">내 계정</a>
+      <div class="nav-account" data-auth="user" style="display:none">
+        <button type="button" class="nav-account-btn" id="navAccountBtn">내 계정</button>
+        <div class="nav-account-menu" id="navAccountMenu">
+          <a href="account.html" data-auth="verified" style="display:none">계정관리</a>
+          <a href="account.html?tab=subscription" data-auth="verified" style="display:none">구독관리</a>
+          <button type="button" class="nav-account-logout" id="navLogoutBtn">로그아웃</button>
+        </div>
+      </div>
       <div class="lang-toggle">
         <button type="button" data-lang-btn="ko" class="active">KR</button>
         <button type="button" data-lang-btn="en">EN</button>
@@ -67,18 +74,19 @@
   </footer>
 
 <script type="module">
-  import { watchAuthForNav, db } from './js/auth.js';
+  import { watchAuthForNav, db, initAccountMenu } from './js/auth.js';
   import { initLangToggle } from './js/i18n.js';
   import { collection, getDocs, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
   watchAuthForNav();
+  initAccountMenu();
   initLangToggle();
 
   // 관리자 화면(가이드 관리)에서 아직 아무 것도 등록하지 않았거나, Firestore를 못 불러오는
   // 만일의 경우를 대비한 대체 콘텐츠. 평소에는 Firestore의 guides 컬렉션 내용이 그대로 보인다.
   const FALLBACK_SECTIONS = [
     { anchor_id: 'start', title: '시작하기 — 사진 폴더 연결', badge: '', body: '기억숲을 처음 실행하면 온보딩 화면에서 사진·영상이 들어있는 폴더(내 컴퓨터의 폴더, 외장하드 등)를 연결합니다. 사진 파일은 옮기거나 복사되지 않고, 그 자리에 그대로 둔 채 기억숲이 분석만 합니다.\n\n폴더를 연결하면 스캔이 시작되고, 촬영 날짜(EXIF)·위치(GPS)·얼굴 정보를 분석해 사진들을 자동으로 사건(이벤트) 단위로 묶습니다. 사진이 많을수록 처음 스캔에는 시간이 걸릴 수 있어요.' },
-    { anchor_id: 'home', title: '홈 — 오늘의 기억', badge: '', body: '홈 화면은 "오늘 같은 날"의 과거 사진(온 디스 데이)과, 전체 인생을 한눈에 보는 라이프 그리드를 보여줍니다. 매일 조금씩 다른 기억을 마주치게 되는 진입점이에요.' },
+    { anchor_id: 'home', title: '홈 — 오늘의 기억', badge: '', body: '홈 화면은 "오늘 같은 날"의 과거 사진(온 디스 데이)과, 그동안 쌓인 일상을 한눈에 보는 라이프 그리드를 보여줍니다. 매일 조금씩 다른 기억을 마주치게 되는 진입점이에요.' },
     { anchor_id: 'timeline', title: '타임라인 · 갤러리', badge: '', body: '타임라인은 사진을 시간순으로, 갤러리는 격자형으로 훑어볼 수 있는 화면입니다. 사진 한 장을 눌러 날짜를 수정하거나 캡션을 남길 수 있어요.' },
     { anchor_id: 'people', title: '인물', badge: '', body: '얼굴 인식으로 사진 속 인물들을 자동으로 그룹화합니다. 인물에 이름을 붙이고, 같은 사람인데 다른 그룹으로 나뉜 경우 병합할 수 있어요. 잘못 인식된 인물은 숨기기, 병합 제안 확인/거절 등으로 정리할 수 있습니다.' },
     { anchor_id: 'chapters', title: '인생 챕터', badge: '', body: '연도별·인물별·사건별로 인생 챕터 초안을 AI가 자동으로 만들어줍니다. 챕터 상세 화면에서 내용을 직접 다듬거나(생성/다듬기), 원하는 사진을 골라 넣을 수 있고, 완성된 챕터는 PDF로 내보낼 수 있어요.' },

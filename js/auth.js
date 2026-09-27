@@ -109,10 +109,45 @@ export function watchAuthForNav() {
     document.querySelectorAll('[data-auth="user"]').forEach((el) => {
       el.style.display = user ? "" : "none";
     });
+    // 이메일 인증까지 마친 사용자에게만 보여줄 항목("내 계정" 드롭다운의 계정관리/구독관리 등).
+    document.querySelectorAll('[data-auth="verified"]').forEach((el) => {
+      el.style.display = user && user.emailVerified ? "" : "none";
+    });
     document.querySelectorAll('[data-user-name]').forEach((el) => {
       if (user) el.textContent = user.displayName || user.email;
     });
   });
+}
+
+// nav의 "내 계정" 드롭다운(계정관리/구독관리/로그아웃) 열고 닫기 + 로그아웃 버튼 초기화.
+// 하위 메뉴 항목의 노출 여부(로그인/이메일 인증 상태)는 watchAuthForNav()의
+// data-auth="user"/"verified" 처리로 이뤄지고, 이 함수는 순수하게 UI 상호작용만 담당한다.
+export function initAccountMenu() {
+  const btn = document.getElementById('navAccountBtn');
+  const menu = document.getElementById('navAccountMenu');
+  const logoutBtn = document.getElementById('navLogoutBtn');
+  if (!btn || !menu) return;
+
+  function closeMenu() {
+    menu.classList.remove('open');
+  }
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menu.classList.toggle('open');
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target) && e.target !== btn) closeMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+  });
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      closeMenu();
+      await logOut();
+      window.location.href = 'index.html';
+    });
+  }
 }
 
 export function friendlyAuthError(err) {
