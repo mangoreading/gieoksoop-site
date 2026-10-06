@@ -33,14 +33,20 @@ export async function getPayment(env, paymentId) {
 }
 
 // 결제 취소(전액 환불). 카드 승인 취소는 PG(이니시스)를 통해 처리된다.
-export async function cancelPayment(env, paymentId, reason) {
+// options.amount 가 있으면 부분 취소(그 금액만 환불), 없으면 전액 취소.
+export async function cancelPayment(env, paymentId, reason, options = {}) {
   const res = await fetch(`${PORTONE_API_BASE}/payments/${encodeURIComponent(paymentId)}/cancel`, {
     method: "POST",
     headers: {
       Authorization: `PortOne ${env.PORTONE_API_SECRET}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ reason, requester: "CUSTOMER" }),
+    body: JSON.stringify({
+      reason,
+      requester: "CUSTOMER",
+      ...(options.amount != null ? { amount: options.amount } : {}),
+      ...(options.currentCancellableAmount != null ? { currentCancellableAmount: options.currentCancellableAmount } : {}),
+    }),
   });
   let data = null;
   try {

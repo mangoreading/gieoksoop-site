@@ -5,7 +5,7 @@
 //   정기결제를 지원하지 않아서(2026.10) 연간은 빌링키가 아니라 일반(단건) 결제로 받는다 --
 //   프론트가 requestPayment로 결제를 끝낸 뒤 paymentId만 보내면, 서버가 포트원에서 결제
 //   내역을 다시 조회해 금액·상태를 검증하고 이용 기간(12개월)을 부여한다. 자동 갱신은 없다.
-// - POST /api/payments/refund    : 연간 이용권 결제 후 7일 이내 셀프 환불(결제 취소 + 이용 기간 회수).
+// - POST /api/payments/refund    : 연간 이용권 셀프 취소(환불) -- 사용 개월 수에 따라 부분/전액 환불 + 이용 기간 정리.
 // - POST /api/payments/cancel    : 구독 해지(자동결제 중단).
 // - POST /api/payments/webhook   : 포트원이 보내는 결제 결과 알림 수신.
 // - runScheduledBilling(env)     : Cloudflare Cron Trigger에서 매일 호출 — 다음 결제일이
@@ -57,14 +57,6 @@ function addMonths(date, months) {
   const d = new Date(date.getTime());
   d.setMonth(d.getMonth() + months);
   return d;
-}
-
-// 연간 이용권 셀프 환불이 가능한 마지막 시각(없으면 null) -- 화면이 환불 버튼을 보일지 정하는 데 쓴다.
-function refundableUntil(userDoc) {
-  if (!userDoc || userDoc.payment_type !== "one_time" || !userDoc.last_one_time_payment_id) return null;
-  const paid = userDoc.last_one_time_paid_at;
-  if (!paid || !paid.getTime) return null;
-  return new Date(paid.getTime() + 7 * 24 * 60 * 60 * 1000);
 }
 
 function jsonResponse(obj, status = 200) {
@@ -295,6 +287,7 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
       annual_starts_at: annualStartsAt,
       last_one_time_payment_id: paymentId,
       last_one_time_paid_at: now,
+      last_one_time_period_start: base,
       ...(cardInfo || {}),
     });
   } catch (e) {
@@ -354,18 +347,63 @@ export async function handleAnnual(request, env, verifyFirebaseIdToken) {
   return jsonResponse({ ok: true, paymentId, expiresAt: result.expiresAt || null });
 }
 
-// 연간 이용권 셀프 환불 -- 결제일로부터 7일 이내이면 이용 여부와 관계없이 전액 환불한다(이용약관 제7조).
-// 가장 최근 연간 결제 1건만 대상이다. 포트원에서 결제 취소(카드 승인 취소)에 성공한 뒤에만 이용 기간을 줄인다:
-//  - 월간 이용 중에 연간을 결제했던 경우: 이용 기간이 원래 월간 만료일로 돌아간다(월간 자동결제는 이미
-//    종료됐으므로 그 만료일까지만 이용하고 끝난다 -- 계속 쓰려면 만료 뒤 월간을 새로 구독).
-//  - 연간을 연장(2번째 결제)했던 경우: 이번 결제분 12개월만 줄어든다.
-//  - 환불로 남는 이용 기간이 없으면 구독이 즉시 종료(canceled)된다.
-const REFUND_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// 연간 이용권 셀프 취소(환불) -- 이용약관 제7조의 환불 규정:
+//  - 이용 시작 전(월간 이용 중 결제해 아직 연간 기간이 시작되지 않았거나 시작 시각 이전): 28,000원 전액 환불.
+//  - 이용 시작 후: 환불액 = 28,000원 - (사용 개월 수 x 3,000원). 사용 개월 수는 연간 기간 시작일부터 경과한
+//    개월 수를 올림(1일을 써도 1개월)한다. 환불액이 0원 이하이면 환불할 금액이 없다(자동 갱신이 없으므로 그냥 만료까지 이용).
+//  - 가장 최근 연간 결제 1건만 대상. 포트원 결제 취소(부분취소 포함)에 성공한 뒤에만 이용 기간을 줄인다.
+// 취소 후 상태:
+//  - 이용이 이미 시작된 연간: 구독이 바로 종료(canceled).
+//  - 월간 이용 중에 결제해 아직 시작 전인 연간: 원래 월간 만료일까지만 남는다(월간 자동결제는 연간 결제 때 이미
+//    종료됐으므로 되살아나지 않는다).
+//  - 연간을 미리 연장(2번째 결제)해 아직 시작 전인 분: 이번 결제분 12개월만 줄어든다.
+const MONTHLY_PRICE = PLANS.monthly.amount;
+// 이용 시작 후 이 시간(시간 단위) 이내에는 사용 개월 수를 0으로 본다(전액 환불). 0이면 적용 안 함.
+const REFUND_FULL_WITHIN_HOURS = 0;
+
+// 시작일부터 now까지 경과한 개월 수(올림). now가 시작일 이전이거나 같으면 0.
+function usedMonthsCeil(start, now) {
+  if (now.getTime() <= start.getTime()) return 0;
+  let m = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  let anchor = addMonths(start, m);
+  if (anchor.getTime() > now.getTime()) {
+    m -= 1;
+    anchor = addMonths(start, m);
+  }
+  return anchor.getTime() === now.getTime() ? m : m + 1;
+}
+
+// 연간 결제 1건의 환불액 계산. periodStart: 그 결제로 늘어난 12개월 기간의 시작 시각.
+export function computeAnnualRefund(periodStart, now) {
+  const price = PLANS.annual.amount;
+  if (now.getTime() <= periodStart.getTime()) return { started: false, usedMonths: 0, amount: price };
+  if (REFUND_FULL_WITHIN_HOURS > 0 && now.getTime() - periodStart.getTime() <= REFUND_FULL_WITHIN_HOURS * 3600 * 1000) {
+    return { started: true, usedMonths: 0, amount: price };
+  }
+  const used = usedMonthsCeil(periodStart, now);
+  return { started: true, usedMonths: used, amount: Math.max(0, price - used * MONTHLY_PRICE) };
+}
+
+// 환불 계산에 쓰는 "이번 연간 결제 기간의 시작 시각". 결제 시 저장한 값을 우선 쓰고,
+// 없는 예전 데이터는 월간 만료일 기준 시작일 → 결제 시각 순으로 추정한다.
+function annualPeriodStart(userDoc) {
+  if (userDoc.last_one_time_period_start && userDoc.last_one_time_period_start.getTime) return userDoc.last_one_time_period_start;
+  if (userDoc.annual_starts_at && userDoc.annual_starts_at.getTime) return userDoc.annual_starts_at;
+  if (userDoc.last_one_time_paid_at && userDoc.last_one_time_paid_at.getTime) return userDoc.last_one_time_paid_at;
+  return null;
+}
 
 export async function handleRefund(request, env, verifyFirebaseIdToken) {
   const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
   if (error) return error;
   const uid = user.uid;
+
+  let body = {};
+  try {
+    body = (await request.json()) || {};
+  } catch (e) {
+    // 본문이 없어도 된다(expectedAmount는 선택)
+  }
 
   let userDoc;
   try {
@@ -380,6 +418,8 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   if (userDoc.last_refunded_payment_id === paymentId) {
     return jsonResponse({ error: "already_refunded" }, 409);
   }
+  const periodStart = annualPeriodStart(userDoc);
+  if (!periodStart) return jsonResponse({ error: "period_start_unknown" }, 409);
 
   let payment;
   try {
@@ -397,31 +437,50 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   }
 
   const now = new Date();
-  const paidAtRaw = payment.paidAt || (userDoc.last_one_time_paid_at && userDoc.last_one_time_paid_at.toISOString && userDoc.last_one_time_paid_at.toISOString());
-  const paidAt = paidAtRaw ? new Date(paidAtRaw) : null;
-  if (!paidAt || isNaN(paidAt.getTime())) {
-    return jsonResponse({ error: "paid_at_unknown" }, 409);
+  const calc = computeAnnualRefund(periodStart, now);
+  if (calc.amount <= 0) {
+    return jsonResponse({ error: "no_refund_amount", usedMonths: calc.usedMonths }, 409);
   }
-  if (now.getTime() - paidAt.getTime() > REFUND_WINDOW_MS) {
-    return jsonResponse({ error: "refund_window_passed" }, 403);
+  // 화면에서 보여준 환불액과 서버 계산이 다르면(시간이 흘러 사용 개월 수가 바뀐 경우 등) 다시 확인받도록 돌려보낸다.
+  if (body.expectedAmount !== undefined && Number(body.expectedAmount) !== calc.amount) {
+    return jsonResponse({ error: "refund_amount_changed", refundAmount: calc.amount, usedMonths: calc.usedMonths }, 409);
   }
 
-  const cancel = await cancelPayment(env, paymentId, "고객 요청 환불(결제 후 7일 이내)");
+  const total = (payment.amount && payment.amount.total) || PLANS.annual.amount;
+  const alreadyCancelled = (payment.amount && payment.amount.cancelled) || 0;
+  const cancel = await cancelPayment(env, paymentId, `고객 요청 취소(환불) - 사용 ${calc.usedMonths}개월`, {
+    amount: calc.amount,
+    currentCancellableAmount: total - alreadyCancelled,
+  });
   if (!cancel.ok) {
     console.error("refund_cancel_failed", uid, paymentId, cancel.status, JSON.stringify(cancel.data));
     return jsonResponse({ error: "portone_cancel_failed", detail: cancel.data && (cancel.data.message || cancel.data.type) }, 502);
   }
 
-  // 이용 기간 회수. 환불은 이미 성공했으므로 여기서 실패해도 사용자에겐 환불 성공으로 알리고 로그만 남긴다.
+  // 이용 기간 정리. 환불은 이미 성공했으므로 여기서 실패해도 사용자에겐 환불 성공으로 알리고 로그만 남긴다.
   const expiry = userDoc.next_billing_at || null;
   const newExpiry = expiry ? addMonths(expiry, -PLANS.annual.periodMonths) : null;
   const startsAt = userDoc.annual_starts_at && userDoc.annual_starts_at.getTime() > now.getTime() ? userDoc.annual_starts_at : null;
   const TOLERANCE_MS = 2 * 24 * 60 * 60 * 1000;
 
+  const endedPatch = {
+    subscription_status: "canceled",
+    cancel_at_period_end: false,
+    auto_renew: false,
+    next_billing_at: null,
+    annual_starts_at: null,
+    billing_key: null,
+    card_brand: null,
+    card_name: null,
+    card_number: null,
+    card_issuer: null,
+  };
   let patch;
   let outcome;
-  if (startsAt && newExpiry && newExpiry.getTime() <= startsAt.getTime() + TOLERANCE_MS) {
-    // 월간 이용 중에 연간을 결제했던 경우 -- 원래 월간 만료일까지만 남는다(자동결제는 이미 종료됨).
+  if (calc.started) {
+    patch = endedPatch;
+    outcome = "ended";
+  } else if (startsAt && newExpiry && newExpiry.getTime() <= startsAt.getTime() + TOLERANCE_MS) {
     patch = {
       subscription_plan: "monthly",
       next_billing_at: startsAt,
@@ -431,27 +490,16 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
     };
     outcome = "reverted_to_monthly_period";
   } else if (newExpiry && newExpiry.getTime() > now.getTime()) {
-    // 연간을 연장했던 경우 -- 이번 결제분만 줄어든다.
     patch = { next_billing_at: newExpiry };
     outcome = "shortened";
   } else {
-    patch = {
-      subscription_status: "canceled",
-      cancel_at_period_end: false,
-      auto_renew: false,
-      next_billing_at: null,
-      annual_starts_at: null,
-      billing_key: null,
-      card_brand: null,
-      card_name: null,
-      card_number: null,
-      card_issuer: null,
-    };
+    patch = endedPatch;
     outcome = "ended";
   }
   patch.last_refunded_payment_id = paymentId;
   patch.last_one_time_payment_id = null;
   patch.last_one_time_paid_at = null;
+  patch.last_one_time_period_start = null;
   patch.pending_plan = null;
 
   try {
@@ -461,12 +509,24 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   }
   try {
     const rows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
-    if (rows[0]) await firestorePatchDoc(env, `payments/${rows[0].id}`, { status: "refunded" });
+    if (rows[0]) {
+      await firestorePatchDoc(env, `payments/${rows[0].id}`, {
+        status: calc.amount >= PLANS.annual.amount ? "refunded" : "partial_refunded",
+        refunded_amount: calc.amount,
+        used_months: calc.usedMonths,
+      });
+    }
   } catch (e) {
     console.error("refund_payment_record_failed", uid, paymentId, e);
   }
 
-  return jsonResponse({ ok: true, outcome, refundedAmount: PLANS.annual.amount, validUntil: patch.next_billing_at || null });
+  return jsonResponse({
+    ok: true,
+    outcome,
+    refundedAmount: calc.amount,
+    usedMonths: calc.usedMonths,
+    validUntil: patch.next_billing_at || null,
+  });
 }
 
 // 구독 해지 -- 즉시 끊지 않고, 이미 결제한 기간(next_billing_at)까지는 계속
@@ -635,7 +695,6 @@ export async function handleStatus(request, env, verifyFirebaseIdToken) {
     subscription_plan: userDoc.subscription_plan || null,
     payment_type: userDoc.payment_type || (userDoc.billing_key ? "billing" : null),
     annual_starts_at: userDoc.annual_starts_at || null,
-    refundable_until: refundableUntil(userDoc),
     pending_plan: userDoc.pending_plan || null,
     auto_renew: userDoc.auto_renew !== false,
     cancel_at_period_end: !!userDoc.cancel_at_period_end,
@@ -691,7 +750,14 @@ export async function handleWebhook(request, env) {
     const uid = rows[0] && rows[0].uid;
     if (rows[0]) {
       await firestorePatchDoc(env, `payments/${rows[0].id}`, {
-        status: payment.status === "PAID" ? "paid" : payment.status === "CANCELLED" ? "refunded" : "failed",
+        status:
+          payment.status === "PAID"
+            ? "paid"
+            : payment.status === "CANCELLED"
+              ? "refunded"
+              : payment.status === "PARTIAL_CANCELLED"
+                ? "partial_refunded"
+                : "failed",
       });
     }
     if (uid && payment.status === "FAILED") {
