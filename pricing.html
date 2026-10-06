@@ -446,6 +446,16 @@
       if (!currentSub || currentSub.subscription_status !== 'active') return;
 
       if (isOneTimeActive()) {
+        if (currentSub.subscription_plan === 'monthly') {
+          // 연간 결제를 환불해 월간 이용 기간만 남은 상태(자동결제 종료).
+          if (plan === 'monthly') {
+            const exp = annualExpiryDate();
+            muted('월간 이용 중이에요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+          } else {
+            btn.textContent = '연간 이용권으로 바꾸기 (28,000원)';
+          }
+          return;
+        }
         const startsAt = annualPendingStart();
         if (startsAt) {
           // 월간 이용 중 연간을 결제해 둔 상태 -- 월간 만료일까지는 월간, 그 뒤부터 연간.
@@ -761,7 +771,7 @@
     if (!user) return;
 
     if (plan === 'annual') {
-      if (isOneTimeActive() && !canExtendAnnual()) {
+      if (isOneTimeActive() && currentSub.subscription_plan !== 'monthly' && !canExtendAnnual()) {
         await showAlert('연간 이용권은 만료 3개월 전부터 연장할 수 있어요.', { title: '아직 연장할 수 없어요' });
         return;
       }

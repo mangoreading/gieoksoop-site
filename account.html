@@ -503,6 +503,10 @@
     return startStr ? `구독 시작일: ${startStr} · ${label}: ${nextStr}` : `${label}: ${nextStr}`;
   }
 
+  function fmtDateLocalAcc(d) {
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function planLabel(plan) {
     return plan === 'annual' ? '연간' : plan === 'monthly' ? '월간' : (plan || '-');
   }
@@ -555,7 +559,12 @@
       const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
       const startsTs = subData.annual_starts_at;
       const startsAt = startsTs && startsTs.toDate ? startsTs.toDate() : null;
-      if (startsAt && startsAt.getTime() > Date.now()) {
+      if (plan === 'monthly') {
+        // 연간 결제를 환불해 월간 이용 기간만 남은 상태 -- 자동결제는 이미 종료됐다.
+        pill.textContent = '이용 중 (월간 · 자동결제 종료)';
+        pill.className = 'status-pill active';
+        desc.textContent = `${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요. 자동결제는 종료됐고, 그 이후에는 월간 구독을 새로 시작할 수 있어요.`;
+      } else if (startsAt && startsAt.getTime() > Date.now()) {
         // 월간 이용 중 연간을 결제해 둔 상태 -- 월간 만료일까지는 월간, 그 뒤부터 연간.
         pill.textContent = '이용 중 (월간 → 연간 예정)';
         pill.className = 'status-pill active';
@@ -568,9 +577,60 @@
       }
       const expDate = subData.next_billing_at && subData.next_billing_at.toDate ? subData.next_billing_at.toDate() : null;
       const extendFrom = expDate ? new Date(expDate.getFullYear(), expDate.getMonth() - 3, expDate.getDate()) : null;
-      actionArea.innerHTML = (!extendFrom || extendFrom.getTime() <= Date.now())
-        ? `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>`
-        : '';
+      const canExtend = plan !== 'monthly' && (!extendFrom || extendFrom.getTime() <= Date.now());
+      // 결제 후 7일 이내이면 직접 환불할 수 있다(이용약관 제7조). 가장 최근 연간 결제 1건이 대상.
+      const paidTs = subData.last_one_time_paid_at;
+      const paidDate = paidTs && paidTs.toDate ? paidTs.toDate() : null;
+      const refundUntil = paidDate && subData.last_one_time_payment_id ? new Date(paidDate.getTime() + 7 * 24 * 60 * 60 * 1000) : null;
+      const canRefund = !!refundUntil && refundUntil.getTime() > Date.now();
+      actionArea.innerHTML =
+        (canExtend ? `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>` : '') +
+        (canRefund ? `<button type="button" class="btn btn-outline btn-sm" id="refundAnnualBtn" style="margin-left:${canExtend ? 8 : 0}px;">결제 취소(환불)하기</button>` : '');
+      if (canRefund) {
+        const hint = document.createElement('p');
+        hint.className = 'muted';
+        hint.style.cssText = 'margin:10px 0 0;font-size:13px;';
+        hint.textContent = `결제 후 7일 이내(${fmtDateLocalAcc(refundUntil)}까지)에는 전액 환불할 수 있어요.`;
+        actionArea.appendChild(hint);
+        document.getElementById('refundAnnualBtn').addEventListener('click', async () => {
+          const btn = document.getElementById('refundAnnualBtn');
+          const confirmed = await showConfirm(
+            '28,000원이 카드로 환불되고, 이번 연간 결제로 늘어난 이용 기간이 사라져요. 월간 이용 중 결제하셨다면 원래 월간 만료일까지만 이용할 수 있어요. 환불하시겠어요?',
+            { title: '결제 취소(환불)', okText: '환불하기', danger: true }
+          );
+          if (!confirmed) return;
+          await runRefundAnnual(btn);
+        });
+      }
+
+      async function runRefundAnnual(btn) {
+        setBtnLoading(btn, true);
+        try {
+          const idToken = await user.getIdToken();
+          const res = await fetch('/api/payments/refund', { method: 'POST', headers: { Authorization: 'Bearer ' + idToken } });
+          let resData = null;
+          try { resData = await res.json(); } catch (e) { /* 본문 없음 */ }
+          if (!res.ok || !resData || !resData.ok) {
+            const code = resData && resData.error;
+            if (code === 'refund_window_passed') {
+              await showAlert('결제 후 7일이 지나 직접 환불할 수 없어요. 문의가 필요하시면 support@gieoksoop.com으로 연락해 주세요.', { title: '환불 불가', icon: { type: 'error', glyph: '!' } });
+              setBtnLoading(btn, false);
+              return;
+            }
+            const retry = await showRetryableError('환불 처리 중 문제가 발생했어요. 잠시 후 다시 시도하거나 문의해 주세요.' + (code ? ' (오류: ' + code + ')' : ''));
+            if (retry) return runRefundAnnual(btn);
+            setBtnLoading(btn, false);
+            return;
+          }
+          await showAlert('환불이 완료됐어요. 카드사에 따라 취소 내역이 반영되기까지 영업일 기준 수일이 걸릴 수 있어요.', { title: '환불 완료', icon: { type: 'success', glyph: '✓' } });
+          window.location.reload();
+        } catch (e) {
+          console.error(e);
+          const retry = await showRetryableError('환불 처리 중 문제가 발생했어요: ' + (e.message || e));
+          if (retry) return runRefundAnnual(btn);
+          setBtnLoading(btn, false);
+        }
+      }
     } else if (status === 'active') {
       const autoRenew = subData.auto_renew !== false;
       const pendingPlan = subData.pending_plan || null;

@@ -5,12 +5,13 @@
 //   정기결제를 지원하지 않아서(2026.10) 연간은 빌링키가 아니라 일반(단건) 결제로 받는다 --
 //   프론트가 requestPayment로 결제를 끝낸 뒤 paymentId만 보내면, 서버가 포트원에서 결제
 //   내역을 다시 조회해 금액·상태를 검증하고 이용 기간(12개월)을 부여한다. 자동 갱신은 없다.
+// - POST /api/payments/refund    : 연간 이용권 결제 후 7일 이내 셀프 환불(결제 취소 + 이용 기간 회수).
 // - POST /api/payments/cancel    : 구독 해지(자동결제 중단).
 // - POST /api/payments/webhook   : 포트원이 보내는 결제 결과 알림 수신.
 // - runScheduledBilling(env)     : Cloudflare Cron Trigger에서 매일 호출 — 다음 결제일이
 //   지난 구독자를 찾아 저장해둔 빌링키로 자동으로 재결제한다(index.js의 scheduled 핸들러 참고).
 
-import { payWithBillingKey, getPayment, deleteBillingKey, verifyPortOneWebhook } from "./portone.js";
+import { payWithBillingKey, getPayment, cancelPayment, deleteBillingKey, verifyPortOneWebhook } from "./portone.js";
 import {
   firestoreGetDoc,
   firestorePatchDoc,
@@ -56,6 +57,14 @@ function addMonths(date, months) {
   const d = new Date(date.getTime());
   d.setMonth(d.getMonth() + months);
   return d;
+}
+
+// 연간 이용권 셀프 환불이 가능한 마지막 시각(없으면 null) -- 화면이 환불 버튼을 보일지 정하는 데 쓴다.
+function refundableUntil(userDoc) {
+  if (!userDoc || userDoc.payment_type !== "one_time" || !userDoc.last_one_time_payment_id) return null;
+  const paid = userDoc.last_one_time_paid_at;
+  if (!paid || !paid.getTime) return null;
+  return new Date(paid.getTime() + 7 * 24 * 60 * 60 * 1000);
 }
 
 function jsonResponse(obj, status = 200) {
@@ -285,6 +294,7 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
       next_billing_at: expiresAt,
       annual_starts_at: annualStartsAt,
       last_one_time_payment_id: paymentId,
+      last_one_time_paid_at: now,
       ...(cardInfo || {}),
     });
   } catch (e) {
@@ -342,6 +352,121 @@ export async function handleAnnual(request, env, verifyFirebaseIdToken) {
     return jsonResponse({ error: result.error, detail: result.detail }, result.status || 500);
   }
   return jsonResponse({ ok: true, paymentId, expiresAt: result.expiresAt || null });
+}
+
+// 연간 이용권 셀프 환불 -- 결제일로부터 7일 이내이면 이용 여부와 관계없이 전액 환불한다(이용약관 제7조).
+// 가장 최근 연간 결제 1건만 대상이다. 포트원에서 결제 취소(카드 승인 취소)에 성공한 뒤에만 이용 기간을 줄인다:
+//  - 월간 이용 중에 연간을 결제했던 경우: 이용 기간이 원래 월간 만료일로 돌아간다(월간 자동결제는 이미
+//    종료됐으므로 그 만료일까지만 이용하고 끝난다 -- 계속 쓰려면 만료 뒤 월간을 새로 구독).
+//  - 연간을 연장(2번째 결제)했던 경우: 이번 결제분 12개월만 줄어든다.
+//  - 환불로 남는 이용 기간이 없으면 구독이 즉시 종료(canceled)된다.
+const REFUND_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export async function handleRefund(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+  const uid = user.uid;
+
+  let userDoc;
+  try {
+    userDoc = await firestoreGetDoc(env, `users/${uid}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+  const paymentId = userDoc && userDoc.last_one_time_payment_id;
+  if (!userDoc || userDoc.payment_type !== "one_time" || !paymentId) {
+    return jsonResponse({ error: "no_refundable_payment" }, 400);
+  }
+  if (userDoc.last_refunded_payment_id === paymentId) {
+    return jsonResponse({ error: "already_refunded" }, 409);
+  }
+
+  let payment;
+  try {
+    payment = await getPayment(env, paymentId);
+  } catch (e) {
+    return jsonResponse({ error: "portone_get_payment_failed", detail: String(e.message || e) }, 502);
+  }
+  if (payment.status !== "PAID") {
+    return jsonResponse({ error: "payment_not_paid", detail: payment.status }, 409);
+  }
+  const payerId = payment.customer && payment.customer.id;
+  if (payerId && payerId !== uid) {
+    console.error("refund_payer_mismatch", uid, paymentId, payerId);
+    return jsonResponse({ error: "payer_mismatch" }, 403);
+  }
+
+  const now = new Date();
+  const paidAtRaw = payment.paidAt || (userDoc.last_one_time_paid_at && userDoc.last_one_time_paid_at.toISOString && userDoc.last_one_time_paid_at.toISOString());
+  const paidAt = paidAtRaw ? new Date(paidAtRaw) : null;
+  if (!paidAt || isNaN(paidAt.getTime())) {
+    return jsonResponse({ error: "paid_at_unknown" }, 409);
+  }
+  if (now.getTime() - paidAt.getTime() > REFUND_WINDOW_MS) {
+    return jsonResponse({ error: "refund_window_passed" }, 403);
+  }
+
+  const cancel = await cancelPayment(env, paymentId, "고객 요청 환불(결제 후 7일 이내)");
+  if (!cancel.ok) {
+    console.error("refund_cancel_failed", uid, paymentId, cancel.status, JSON.stringify(cancel.data));
+    return jsonResponse({ error: "portone_cancel_failed", detail: cancel.data && (cancel.data.message || cancel.data.type) }, 502);
+  }
+
+  // 이용 기간 회수. 환불은 이미 성공했으므로 여기서 실패해도 사용자에겐 환불 성공으로 알리고 로그만 남긴다.
+  const expiry = userDoc.next_billing_at || null;
+  const newExpiry = expiry ? addMonths(expiry, -PLANS.annual.periodMonths) : null;
+  const startsAt = userDoc.annual_starts_at && userDoc.annual_starts_at.getTime() > now.getTime() ? userDoc.annual_starts_at : null;
+  const TOLERANCE_MS = 2 * 24 * 60 * 60 * 1000;
+
+  let patch;
+  let outcome;
+  if (startsAt && newExpiry && newExpiry.getTime() <= startsAt.getTime() + TOLERANCE_MS) {
+    // 월간 이용 중에 연간을 결제했던 경우 -- 원래 월간 만료일까지만 남는다(자동결제는 이미 종료됨).
+    patch = {
+      subscription_plan: "monthly",
+      next_billing_at: startsAt,
+      annual_starts_at: null,
+      auto_renew: false,
+      cancel_at_period_end: true,
+    };
+    outcome = "reverted_to_monthly_period";
+  } else if (newExpiry && newExpiry.getTime() > now.getTime()) {
+    // 연간을 연장했던 경우 -- 이번 결제분만 줄어든다.
+    patch = { next_billing_at: newExpiry };
+    outcome = "shortened";
+  } else {
+    patch = {
+      subscription_status: "canceled",
+      cancel_at_period_end: false,
+      auto_renew: false,
+      next_billing_at: null,
+      annual_starts_at: null,
+      billing_key: null,
+      card_brand: null,
+      card_name: null,
+      card_number: null,
+      card_issuer: null,
+    };
+    outcome = "ended";
+  }
+  patch.last_refunded_payment_id = paymentId;
+  patch.last_one_time_payment_id = null;
+  patch.last_one_time_paid_at = null;
+  patch.pending_plan = null;
+
+  try {
+    await firestorePatchDoc(env, `users/${uid}`, patch);
+  } catch (e) {
+    console.error("refund_user_update_failed", uid, paymentId, e);
+  }
+  try {
+    const rows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
+    if (rows[0]) await firestorePatchDoc(env, `payments/${rows[0].id}`, { status: "refunded" });
+  } catch (e) {
+    console.error("refund_payment_record_failed", uid, paymentId, e);
+  }
+
+  return jsonResponse({ ok: true, outcome, refundedAmount: PLANS.annual.amount, validUntil: patch.next_billing_at || null });
 }
 
 // 구독 해지 -- 즉시 끊지 않고, 이미 결제한 기간(next_billing_at)까지는 계속
@@ -510,6 +635,7 @@ export async function handleStatus(request, env, verifyFirebaseIdToken) {
     subscription_plan: userDoc.subscription_plan || null,
     payment_type: userDoc.payment_type || (userDoc.billing_key ? "billing" : null),
     annual_starts_at: userDoc.annual_starts_at || null,
+    refundable_until: refundableUntil(userDoc),
     pending_plan: userDoc.pending_plan || null,
     auto_renew: userDoc.auto_renew !== false,
     cancel_at_period_end: !!userDoc.cancel_at_period_end,
@@ -590,6 +716,9 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
   }
   if (url.pathname === "/api/payments/annual" && request.method === "POST") {
     return handleAnnual(request, env, verifyFirebaseIdToken);
+  }
+  if (url.pathname === "/api/payments/refund" && request.method === "POST") {
+    return handleRefund(request, env, verifyFirebaseIdToken);
   }
   if (url.pathname === "/api/payments/cancel" && request.method === "POST") {
     return handleCancel(request, env, verifyFirebaseIdToken);
