@@ -499,7 +499,7 @@
     if (!data || !data.next_billing_at) return '';
     const startStr = data.billing_key_issued_at ? fmtDate(data.billing_key_issued_at) : null;
     const nextStr = fmtDate(data.next_billing_at);
-    const label = data.auto_renew === false ? '이용 만료일' : '다음 결제일';
+    const label = (data.auto_renew === false || data.payment_type === 'one_time') ? '이용 만료일' : '다음 결제일';
     return startStr ? `구독 시작일: ${startStr} · ${label}: ${nextStr}` : `${label}: ${nextStr}`;
   }
 
@@ -533,7 +533,10 @@
       // 못 불러와도 기본값(none)으로 조용히 진행
     }
 
-    if (cardText && status === 'active') {
+    const isOneTime = !!(subData && subData.payment_type === 'one_time');
+
+    // 연간 이용권(1회 결제)은 등록된 카드가 없으므로 카드 정보는 보여주지 않는다.
+    if (cardText && status === 'active' && !isOneTime) {
       cardInfoEl.textContent = cardText;
       cardInfoEl.style.display = '';
     } else {
@@ -547,16 +550,23 @@
       periodInfoEl.style.display = 'none';
     }
 
-    if (status === 'active') {
+    if (status === 'active' && isOneTime) {
+      // 연간 이용권 -- 자동 갱신/해지/카드 변경이 없는 1회 결제. "해지 예정"이 아니라 이용 기간으로 안내.
+      const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
+      pill.textContent = '이용 중 (연간 이용권)';
+      pill.className = 'status-pill active';
+      desc.textContent = (untilStr ? `${untilStr}까지 이용하실 수 있어요. ` : '') +
+        '연간 이용권은 자동으로 갱신되지 않아요. 만료 전에 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.';
+      actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>`;
+    } else if (status === 'active') {
       const autoRenew = subData.auto_renew !== false;
       const pendingPlan = subData.pending_plan || null;
 
       if (autoRenew) {
         pill.textContent = '구독 중' + (plan ? ` (${planLabel(plan)})` : '');
         pill.className = 'status-pill active';
-        desc.textContent = pendingPlan
-          ? `현재 ${planLabel(plan)} 플랜을 이용 중이에요. 다음 결제일부터 ${planLabel(pendingPlan)} 플랜으로 전환돼요.`
-          : '현재 유료 구독을 이용 중이에요. 해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.';
+        // (예전 "다음 결제일부터 전환 예약"은 폐지 -- 남아 있는 pending_plan 값은 무시한다.)
+        desc.textContent = '현재 유료 구독을 이용 중이에요. 해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.';
         actionArea.innerHTML = `
           <button type="button" class="btn btn-outline btn-sm" id="changeCardBtn">카드 변경하기</button>
           <button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn" style="margin-left:8px;">구독 해지하기</button>
@@ -655,10 +665,17 @@
         }
       }
     } else if (status === 'canceled') {
-      pill.textContent = '해지됨';
-      pill.className = 'status-pill canceled';
-      desc.textContent = '구독이 해지된 상태예요. 언제든 다시 구독할 수 있어요.';
-      actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 구독하기 →</a>`;
+      if (isOneTime) {
+        pill.textContent = '이용 기간 종료';
+        pill.className = 'status-pill canceled';
+        desc.textContent = '연간 이용권 기간이 끝났어요. 다시 결제하면 계속 이용하실 수 있어요.';
+        actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 결제하기 →</a>`;
+      } else {
+        pill.textContent = '해지됨';
+        pill.className = 'status-pill canceled';
+        desc.textContent = '구독이 해지된 상태예요. 언제든 다시 구독할 수 있어요.';
+        actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 구독하기 →</a>`;
+      }
     } else {
       pill.textContent = '구독 중이 아님';
       pill.className = 'status-pill';
@@ -683,7 +700,7 @@
           <tr>
             <td>${fmtDate(p.paid_at)}</td>
             <td>${Number(p.amount || 0).toLocaleString()}원</td>
-            <td>${esc(p.plan || '-')}</td>
+            <td>${esc(p.plan === 'annual' ? '연간 이용권' : planLabel(p.plan))}</td>
             <td>${p.status === 'refunded' ? '환불' : p.status === 'failed' ? '실패' : '완료'}</td>
           </tr>`
           )

@@ -74,8 +74,8 @@
         <div class="plan-badge">8,000원 절약</div>
         <div class="plan-name">유료 · 연간</div>
         <div class="plan-price">연 28,000원</div>
-        <div class="plan-price-sub">월 약 2,333원 꼴 · 연 1회 자동 결제</div>
-        <button type="button" class="btn btn-accent subscribe-btn" data-plan="annual">연 28,000원 구독하기</button>
+        <div class="plan-price-sub">월 약 2,333원 꼴 · 1년 이용권 (자동 갱신 없음)</div>
+        <button type="button" class="btn btn-accent subscribe-btn" data-plan="annual">연 28,000원 결제하기</button>
       </div>
     </div>
 
@@ -134,15 +134,16 @@
     </div>
 
     <p class="pricing-note">
-      유료 구독은 결제 주기가 끝나면 자동으로 갱신·결제됩니다. 해지해도 이미 결제한 기간까지는 계속 이용할 수 있고, 그 이후부터 자동 결제가 중단돼요.<br>
-      월간⟷연간 플랜 전환은 지금 이용 중인 기간이 끝나는 다음 결제일부터 적용돼요.
+      월간 구독은 결제 주기가 끝나면 자동으로 갱신·결제되고, 해지해도 이미 결제한 기간까지는 계속 이용할 수 있어요.<br>
+      연간 이용권은 1회 결제로 1년간 이용하며 자동 갱신되지 않아요. 만료 전에 다시 결제하면 남은 기간 뒤에 1년이 이어서 더해져요.<br>
+      월간 이용 중에 연간 이용권을 결제하면 남은 월간 기간 뒤에 1년이 더해지고, 월간 자동결제는 종료돼요.
     </p>
 
     <div class="modal-overlay" id="checkoutModalOverlay">
       <div class="modal-box">
         <button type="button" class="modal-close" id="checkoutCloseBtn" aria-label="닫기">&times;</button>
         <h3>구독 확인</h3>
-        <p class="desc">아래 내용으로 정기결제가 시작돼요. 카드 등록 후 바로 첫 결제가 진행됩니다.</p>
+        <p class="desc" id="checkoutDesc">아래 내용으로 정기결제가 시작돼요. 카드 등록 후 바로 첫 결제가 진행됩니다.</p>
         <div class="summary-box" id="checkoutSummary"></div>
         <div class="form-error" id="checkoutError"></div>
         <form id="checkoutForm">
@@ -156,7 +157,7 @@
           </div>
           <label class="form-check">
             <input type="checkbox" id="checkoutAgree" required>
-            <span>정기결제 진행 및 <a href="terms.html" target="_blank" rel="noopener">이용약관</a> · <a href="privacy.html" target="_blank" rel="noopener">환불 정책</a>에 동의해요.</span>
+            <span id="checkoutAgreeText">정기결제 진행 및 <a href="terms.html" target="_blank" rel="noopener">이용약관</a> · <a href="terms.html#refund" target="_blank" rel="noopener">환불 정책</a>에 동의해요.</span>
           </label>
           <button type="submit" class="btn btn-accent btn-block" id="checkoutSubmitBtn">결제하기</button>
         </form>
@@ -223,11 +224,34 @@
   // 화면에는 클라이언트에서 계산한 예상값을 보여준다.
   function planSummaryRows(plan) {
     const info = PLAN_DISPLAY[plan];
+    if (plan === 'annual') {
+      return [
+        { k: '플랜', v: '연간 이용권' },
+        { k: '결제 금액', v: info.amount.toLocaleString() + '원' },
+        { k: '결제 방식', v: '1회 결제 (자동 갱신 없음)' },
+        { k: '이용 기간', v: '~ ' + fmtDateLocal(annualExpiryPreview()), strong: true },
+      ];
+    }
     return [
       { k: '플랜', v: info.korean },
       { k: '결제 금액', v: info.amount.toLocaleString() + '원' },
-      { k: '결제 주기', v: plan === 'annual' ? '매년 자동 결제' : '매달 자동 결제', strong: true },
+      { k: '결제 주기', v: '매달 자동 결제', strong: true },
     ];
+  }
+
+  // 연간 이용권 결제 시 예상 만료일 -- 이용 중이면 남은 기간 뒤에 12개월을 이어 붙인다.
+  // (실제 만료일은 서버가 확정한다.)
+  function annualExpiryPreview() {
+    let base = new Date();
+    if (currentSub && currentSub.subscription_status === 'active' && currentSub.next_billing_at && currentSub.next_billing_at.toDate) {
+      const cur = currentSub.next_billing_at.toDate();
+      if (cur.getTime() > base.getTime()) base = cur;
+    }
+    return addMonthsLocal(base, 12);
+  }
+
+  function isOneTimeActive() {
+    return !!(currentSub && currentSub.subscription_status === 'active' && currentSub.payment_type === 'one_time');
   }
 
   function addMonthsLocal(date, months) {
@@ -243,6 +267,10 @@
   // storeId/channelKey는 비밀값이 아니라 프론트엔드에 그대로 노출되는 공개 식별자.
   const PORTONE_STORE_ID = 'store-9b3f8aa5-ea5a-4941-a366-56d89fdb6ed2';
   const PORTONE_CHANNEL_KEY = 'channel-key-2c2cfc86-6056-47cb-a1da-9ca271f3035a';
+  // 연간 이용권(단건 결제)용 채널 -- 정기결제용과 다른 "일반(단건) 결제" 채널이다.
+  // TODO: 포트원 콘솔에서 일반결제 채널을 만든 뒤 발급되는 채널 키(channel-key-...)를 여기에 넣는다.
+  // 비어 있는 동안에는 연간 결제 버튼이 "준비 중"으로 비활성화된다.
+  const PORTONE_ANNUAL_CHANNEL_KEY = 'channel-key-e5a677df-10a7-4158-97dc-2f0db2c63a11';
 
   // 포트원/PG가 내려주는 원문 에러 메시지는 사용자에게 그대로 보여주기엔 어려운
   // 경우가 많아서, 흔한 케이스 몇 가지는 이해하기 쉬운 안내로 바꿔서 보여준다.
@@ -278,6 +306,23 @@
     renderSummaryRows(summaryEl, planSummaryRows(plan));
     setBtnLoading(submitBtn, false);
 
+    const descEl = document.getElementById('checkoutDesc');
+    const agreeTextEl = document.getElementById('checkoutAgreeText');
+    const agreeLinks = '<a href="terms.html" target="_blank" rel="noopener">이용약관</a> · <a href="terms.html#refund" target="_blank" rel="noopener">환불 정책</a>에 동의해요.';
+    if (plan === 'annual') {
+      let desc = '연간 이용권을 1회 결제해요. 자동으로 갱신되지 않아요.';
+      if (currentSub && currentSub.subscription_status === 'active') {
+        desc += currentSub.billing_key || currentSub.payment_type === 'billing'
+          ? ' 남은 월간 기간 뒤에 1년이 이어서 더해지고, 월간 자동결제는 종료돼요.'
+          : ' 남은 기간 뒤에 1년이 이어서 더해져요.';
+      }
+      descEl.textContent = desc;
+      agreeTextEl.innerHTML = '결제 진행 및 ' + agreeLinks;
+    } else {
+      descEl.textContent = '아래 내용으로 정기결제가 시작돼요. 카드 등록 후 바로 첫 결제가 진행됩니다.';
+      agreeTextEl.innerHTML = '정기결제 진행 및 ' + agreeLinks;
+    }
+
     return new Promise((resolve) => {
       function cleanup(result) {
         overlay.classList.remove('open');
@@ -307,7 +352,7 @@
           return;
         }
         if (!agreeInput.checked) {
-          errorEl.textContent = '정기결제 및 약관 동의가 필요해요.';
+          errorEl.textContent = (plan === 'annual' ? '결제 및 약관 동의가 필요해요.' : '정기결제 및 약관 동의가 필요해요.');
           errorEl.style.display = 'block';
           return;
         }
@@ -349,6 +394,8 @@
   }
 
   // 로그인 상태 + 현재 구독 상태에 맞춰 플랜 버튼들의 라벨/활성화 여부를 갱신한다.
+  //  - 월간: 정기결제(빌링키). 연간 이용권 사용 중에는 선택 불가.
+  //  - 연간: 1회 결제. 월간 이용 중이면 남은 기간 뒤에 이어 붙이고, 연간 이용 중이면 연장.
   function renderPlanButtons() {
     subscribeButtons.forEach((btn) => {
       const plan = btn.dataset.plan;
@@ -356,37 +403,36 @@
       btn.textContent = btn.dataset.defaultLabel;
       btn.classList.remove('btn-outline');
       btn.classList.add('btn-accent');
+      const muted = (label) => {
+        btn.disabled = true;
+        btn.textContent = label;
+        btn.classList.remove('btn-accent');
+        btn.classList.add('btn-outline');
+      };
+
+      if (plan === 'annual' && !PORTONE_ANNUAL_CHANNEL_KEY) {
+        muted('연간 결제 준비 중이에요');
+        return;
+      }
 
       if (!currentSub || currentSub.subscription_status !== 'active') return;
 
-      const currentPlan = currentSub.subscription_plan;
+      if (isOneTimeActive()) {
+        if (plan === 'annual') {
+          btn.textContent = '1년 더 연장하기 (28,000원)';
+        } else {
+          muted('연간 이용권 이용 중이에요');
+        }
+        return;
+      }
+
+      // 이하: 월간 정기결제 이용 중
       const autoRenew = currentSub.auto_renew !== false;
-      const pendingPlan = currentSub.pending_plan || null;
-
-      if (!autoRenew) {
-        // 해지 예약 중 -- 플랜 전환 대신 계정 페이지에서 구독 유지부터 안내.
-        btn.disabled = true;
-        btn.textContent = '해지 예약 중이에요';
-        btn.classList.remove('btn-accent');
-        btn.classList.add('btn-outline');
+      if (plan === 'annual') {
+        btn.textContent = '연간 이용권으로 바꾸기 (28,000원)';
         return;
       }
-
-      if (plan === currentPlan) {
-        btn.disabled = true;
-        btn.textContent = pendingPlan ? '다른 플랜으로 전환 예정' : '이용 중인 플랜이에요';
-        btn.classList.remove('btn-accent');
-        btn.classList.add('btn-outline');
-        return;
-      }
-
-      if (pendingPlan === plan) {
-        btn.textContent = '전환 예약 취소하기';
-        btn.classList.remove('btn-accent');
-        btn.classList.add('btn-outline');
-      } else {
-        btn.textContent = '다음 결제일부터 전환하기';
-      }
+      muted(autoRenew ? '이용 중인 플랜이에요' : '해지 예약 중이에요');
     });
   }
 
@@ -402,63 +448,8 @@
       }
     }
     renderPlanButtons();
+    if (user) await handlePaymentRedirectReturn();
   });
-
-  // 이미 활성 구독 중인 사용자가 다른 플랜 버튼을 눌렀을 때 -- 바로 재결제하지
-  // 않고, 다음 결제일부터 전환되도록 예약만 한다(이미 결제한 기간은 보장).
-  async function changePlan(clickedPlan, btn) {
-    const pendingPlan = currentSub.pending_plan || null;
-    const isCancelingPending = pendingPlan === clickedPlan;
-    const targetPlan = isCancelingPending ? currentSub.subscription_plan : clickedPlan;
-    const effectiveDate = fmtDate(currentSub.next_billing_at);
-
-    const confirmMsg = isCancelingPending
-      ? '플랜 전환 예약을 취소할까요? 지금 이용 중인 플랜이 계속 유지돼요.'
-      : `${effectiveDate ? '다음 결제일(' + effectiveDate + ')' : '다음 결제일'}부터 ${PLAN_DISPLAY[clickedPlan].korean} 플랜으로 전환돼요. 그 전까지는 지금 플랜을 그대로 이용하실 수 있어요.`;
-
-    const confirmed = await showConfirm(confirmMsg, {
-      title: '플랜 변경',
-      okText: isCancelingPending ? '전환 취소하기' : '전환 예약하기',
-    });
-    if (!confirmed) return;
-
-    return runChangePlan(targetPlan, isCancelingPending, btn);
-  }
-
-  async function runChangePlan(targetPlan, isCancelingPending, btn) {
-    setBtnLoading(btn, true);
-    try {
-      const user = auth.currentUser;
-      const idToken = await user.getIdToken();
-      const res = await fetch('/api/payments/change-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
-        body: JSON.stringify({ plan: targetPlan }),
-      });
-      let data = null;
-      try {
-        data = await res.json();
-      } catch (e) {
-        console.error(e);
-      }
-      if (!res.ok || !data || !data.ok) {
-        const retry = await showRetryableError('처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)));
-        if (retry) return runChangePlan(targetPlan, isCancelingPending, btn);
-        setBtnLoading(btn, false);
-        return;
-      }
-      await showAlert(isCancelingPending ? '전환 예약이 취소됐어요.' : '플랜 전환이 예약됐어요.', {
-        title: '완료',
-        icon: { type: 'success', glyph: '✓' },
-      });
-      window.location.reload();
-    } catch (e) {
-      console.error(e);
-      const retry = await showRetryableError('처리 중 문제가 발생했어요: ' + (e.message || e));
-      if (retry) return runChangePlan(targetPlan, isCancelingPending, btn);
-      setBtnLoading(btn, false);
-    }
-  }
 
   // 신규 구독(또는 해지 후 재구독) -- 빌링키를 새로 발급하고 즉시 첫 결제를 진행한다.
   async function startNewSubscription(plan, btn) {
@@ -545,6 +536,120 @@
     }
   }
 
+  // 연간 이용권(1회 결제) -- 결제창에서 단건 결제 후, 서버가 PortOne에서 결제 내역을 다시
+  // 조회·검증하고 이용 기간을 부여한다.
+  async function startAnnualPurchase(btn) {
+    const user = auth.currentUser;
+    const info = await collectCheckoutInfo('annual', user);
+    if (!info) return;
+    return runAnnualPayment(info, btn);
+  }
+
+  async function runAnnualPayment({ fullName, phoneNumber }, btn) {
+    const user = auth.currentUser;
+    subscribeButtons.forEach((b) => setBtnLoading(b, true));
+    setPgDim(true);
+
+    try {
+      const paymentId = 'ann_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const response = await window.PortOne.requestPayment({
+        storeId: PORTONE_STORE_ID,
+        channelKey: PORTONE_ANNUAL_CHANNEL_KEY,
+        paymentId: paymentId,
+        orderName: '기억숲 구독 (연간)',
+        totalAmount: PLAN_DISPLAY.annual.amount,
+        currency: 'CURRENCY_KRW',
+        payMethod: 'CARD',
+        customer: {
+          customerId: user.uid,
+          fullName: fullName,
+          phoneNumber: phoneNumber,
+          email: user.email || undefined,
+        },
+        // 모바일 등 리디렉션 방식 결제 후 돌아올 주소 -- 아래 handlePaymentRedirectReturn 에서 마무리한다.
+        redirectUrl: window.location.origin + window.location.pathname,
+      });
+
+      if (!response) return; // 리디렉션 방식으로 넘어간 경우
+      if (response.code) {
+        if (/CANCEL|취소/i.test(String(response.code) + String(response.message || ''))) return; // 사용자가 결제창을 닫음
+        const retry = await showRetryableError(friendlyBillingError(response.message || response.code), { title: '결제 실패' });
+        if (retry) return runAnnualPayment({ fullName, phoneNumber }, btn);
+        return;
+      }
+      await completeAnnualPurchase(response.paymentId || paymentId);
+    } catch (e) {
+      console.error(e);
+      const retry = await showRetryableError('결제 중 문제가 발생했어요: ' + (e.message || e));
+      if (retry) return runAnnualPayment({ fullName, phoneNumber }, btn);
+    } finally {
+      setPgDim(false);
+      subscribeButtons.forEach((b) => setBtnLoading(b, false));
+    }
+  }
+
+  // 결제는 끝났고 서버에 이용 기간 부여를 요청하는 단계. 실패해도 웹훅이 백업으로 처리하니
+  // 사용자에게는 "결제는 완료, 반영이 늦어질 수 있음"으로 안내한다.
+  async function completeAnnualPurchase(paymentId) {
+    const user = auth.currentUser;
+    const idToken = await user.getIdToken();
+    const res = await fetch('/api/payments/annual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+      body: JSON.stringify({ paymentId: paymentId }),
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (e) {
+      console.error(e);
+    }
+    if (!res.ok || !data || !data.ok) {
+      await showAlert('결제는 완료됐지만 이용 기간 반영 중 문제가 발생했어요. 잠시 후 계정 페이지에서 확인해 주세요. 계속 반영되지 않으면 문의해 주세요. (결제번호: ' + paymentId + ')', {
+        title: '반영 지연',
+        icon: { type: 'error', glyph: '!' },
+      });
+      return;
+    }
+    const expiry = data.expiresAt ? new Date(data.expiresAt) : annualExpiryPreview();
+    await showReceipt('연간 이용권 결제가 완료됐어요.', [
+      { k: '플랜', v: '연간 이용권' },
+      { k: '결제 금액', v: PLAN_DISPLAY.annual.amount.toLocaleString() + '원' },
+      { k: '이용 기간', v: '~ ' + fmtDateLocal(expiry), strong: true },
+    ], { title: '결제 완료' });
+    window.location.reload();
+  }
+
+  // 모바일 등에서 결제창이 리디렉션 방식으로 열렸다가 이 페이지로 돌아온 경우의 마무리.
+  // 돌아온 주소에는 paymentId(+ 실패 시 code/message)가 쿼리로 붙는다.
+  async function handlePaymentRedirectReturn() {
+    const params = new URLSearchParams(window.location.search);
+    const paymentId = params.get('paymentId');
+    if (!paymentId || !paymentId.startsWith('ann_')) return false;
+    const code = params.get('code');
+    const message = params.get('message');
+    history.replaceState(null, '', window.location.pathname);
+    if (code) {
+      if (!/CANCEL|취소/i.test(code + (message || ''))) {
+        await showAlert('결제가 완료되지 않았어요: ' + friendlyBillingError(message || code), {
+          title: '결제 실패',
+          icon: { type: 'error', glyph: '!' },
+        });
+      }
+      return true;
+    }
+    subscribeButtons.forEach((b) => setBtnLoading(b, true));
+    try {
+      await completeAnnualPurchase(paymentId);
+    } catch (e) {
+      console.error(e);
+      await showAlert('결제 확인 중 문제가 발생했어요. 계정 페이지에서 이용 기간을 확인해 주세요. (결제번호: ' + paymentId + ')', { title: '확인 필요' });
+    } finally {
+      subscribeButtons.forEach((b) => setBtnLoading(b, false));
+    }
+    return true;
+  }
+
   async function startSubscribe(plan, btn) {
     if (!isLoggedIn) {
       window.location.href = 'signup.html';
@@ -553,10 +658,16 @@
     const user = auth.currentUser;
     if (!user) return;
 
-    if (currentSub && currentSub.subscription_status === 'active' && currentSub.auto_renew !== false) {
-      return changePlan(plan, btn);
+    if (plan === 'annual') {
+      if (!PORTONE_ANNUAL_CHANNEL_KEY) {
+        await showAlert('연간 결제는 곧 열려요. 조금만 기다려 주세요.', { title: '준비 중' });
+        return;
+      }
+      return startAnnualPurchase(btn);
     }
 
+    // 월간 -- 이미 구독 중이면(월간 이용 중이거나 연간 이용권 이용 중) 버튼이 비활성화돼 있다.
+    if (currentSub && currentSub.subscription_status === 'active') return;
     return startNewSubscription(plan, btn);
   }
 

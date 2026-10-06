@@ -1,6 +1,10 @@
 // 구독 결제(포트원 V2 빌링키) 관련 API 라우트 + 정기결제 자동 실행(cron).
 // - POST /api/payments/subscribe : 프론트에서 발급받은 빌링키로 첫 결제를 시도하고,
 //   성공하면 Firestore에 구독 상태 + 결제내역을 반영한다.
+// - POST /api/payments/annual    : 연간 플랜(28,000원) 단건 결제 확정. 이니시스가 연간 주기
+//   정기결제를 지원하지 않아서(2026.10) 연간은 빌링키가 아니라 일반(단건) 결제로 받는다 --
+//   프론트가 requestPayment로 결제를 끝낸 뒤 paymentId만 보내면, 서버가 포트원에서 결제
+//   내역을 다시 조회해 금액·상태를 검증하고 이용 기간(12개월)을 부여한다. 자동 갱신은 없다.
 // - POST /api/payments/cancel    : 구독 해지(자동결제 중단).
 // - POST /api/payments/webhook   : 포트원이 보내는 결제 결과 알림 수신.
 // - runScheduledBilling(env)     : Cloudflare Cron Trigger에서 매일 호출 — 다음 결제일이
@@ -16,10 +20,16 @@ import {
   firestoreQueryDueCancellation,
 } from "./firestore.js";
 
+// oneTime: true 이면 빌링키 자동결제가 아니라 단건 결제(requestPayment)로만 구매하는 플랜.
+// 연간은 PG(KG이니시스)에서 연 단위 정기결제를 허용하지 않아 단건 결제로 받는다.
 const PLANS = {
-  monthly: { amount: 3000, orderName: "기억숲 구독 (월간)", periodMonths: 1 },
-  annual: { amount: 28000, orderName: "기억숲 구독 (연간)", periodMonths: 12 },
+  monthly: { amount: 3000, orderName: "기억숲 구독 (월간)", periodMonths: 1, oneTime: false },
+  annual: { amount: 28000, orderName: "기억숲 구독 (연간)", periodMonths: 12, oneTime: true },
 };
+
+// 연간 단건 결제의 paymentId는 항상 이 접두어로 시작한다(프론트가 채번). 웹훅이 "이건 연간
+// 결제구나" 하고 알아보는 용도이기도 하다. KG이니시스 주문번호는 40자 제한이 있어 짧게 쓴다.
+const ANNUAL_PAYMENT_ID_PREFIX = "ann_";
 
 // 포트원 결제 상세 조회(getPayment) 응답에서 등록된 카드 정보를 뽑아낸다.
 // 카드 결제가 아니거나 조회에 실패하면 null을 반환 -- 카드 정보는 화면 표시용
@@ -83,6 +93,9 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
     return jsonResponse({ error: "invalid_params" }, 400);
   }
   const planInfo = PLANS[plan];
+  if (planInfo.oneTime) {
+    return jsonResponse({ error: "one_time_plan", detail: "연간 플랜은 카드 등록이 아니라 단건 결제로만 이용할 수 있어요." }, 400);
+  }
 
   let existingUser = null;
   try {
@@ -162,6 +175,7 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
     await firestorePatchDoc(env, `users/${user.uid}`, {
       subscription_status: "active",
       subscription_plan: plan,
+      payment_type: "billing",
       billing_key: billingKey,
       auto_renew: true,
       cancel_at_period_end: false,
@@ -182,6 +196,137 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
   }
 
   return jsonResponse({ ok: true, paymentId });
+}
+
+// 연간 단건 결제 확정 -- /api/payments/annual 과 웹훅이 같이 쓴다.
+// 프론트가 알려준 값은 믿지 않고, 포트원에 결제 내역(getPayment)을 직접 다시 조회해서
+// (1) 결제가 실제로 끝났는지(PAID) (2) 금액이 연간 요금과 정확히 같은지 (3) 결제한 사람이
+// 이 uid가 맞는지 확인한 뒤에만 이용 기간을 준다.
+//
+// 이용 기간 계산: 이미 구독 중이면 남은 기간 뒤에 12개월을 이어 붙인다(월간 이용 중 연간으로
+// 갈아타거나, 연간을 만료 전에 미리 연장해도 이미 낸 기간이 사라지지 않게). 월간 자동결제
+// 중이었다면 빌링키를 정리해 이중 청구를 막는다.
+//
+// 저장 방식: 자동결제가 없으므로 auto_renew=false 로 두어 정기결제 cron(runScheduledBilling)이
+// 건드리지 않게 하고, cancel_at_period_end=true 로 두어 기존 "이용 기간 종료 처리" 패스가
+// 만료일(next_billing_at)에 구독을 끝내도록 한다(새 Firestore 복합 인덱스 없이 기존 로직 재사용).
+// 화면에서는 payment_type="one_time" 으로 "해지 예정"이 아니라 "이용 기간 N까지"로 보여준다.
+//
+// 멱등성: 같은 paymentId로 두 번 호출돼도(프론트 재시도 + 웹훅) 기간이 두 번 늘지 않도록
+// users 문서의 last_one_time_payment_id 로 이미 처리했는지 확인한다. (두 요청이 정확히 같은
+// 순간에 겹치는 극히 드문 경우까지 막지는 못한다 -- 그 경우 기간이 한 번 더 늘 수 있지만,
+// 결제했는데 이용을 못 하는 쪽보다는 안전한 방향의 오차라 감수한다.)
+async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
+  const planInfo = PLANS.annual;
+
+  let payment;
+  try {
+    payment = await getPayment(env, paymentId);
+  } catch (e) {
+    return { ok: false, status: 502, error: "portone_get_payment_failed", detail: String(e.message || e) };
+  }
+
+  if (payment.status !== "PAID") {
+    return { ok: false, status: 402, error: "payment_not_paid", detail: payment.status };
+  }
+  const paidTotal = payment.amount && payment.amount.total;
+  if (paidTotal !== planInfo.amount || (payment.currency && payment.currency !== "KRW")) {
+    console.error("annual_amount_mismatch", uid, paymentId, paidTotal, payment.currency);
+    return { ok: false, status: 400, error: "amount_mismatch" };
+  }
+  const payerId = payment.customer && payment.customer.id;
+  if (payerId && payerId !== uid) {
+    console.error("annual_payer_mismatch", uid, paymentId, payerId);
+    return { ok: false, status: 403, error: "payer_mismatch" };
+  }
+
+  let userDoc = null;
+  try {
+    userDoc = await firestoreGetDoc(env, `users/${uid}`);
+  } catch (e) {
+    return { ok: false, status: 500, error: "firestore_lookup_failed", detail: String(e.message || e) };
+  }
+  if (userDoc && userDoc.last_one_time_payment_id === paymentId) {
+    return { ok: true, already: true };
+  }
+
+  const now = new Date();
+  const wasActive = !!(userDoc && userDoc.subscription_status === "active" && userDoc.next_billing_at);
+  const base = wasActive && userDoc.next_billing_at.getTime() > now.getTime() ? userDoc.next_billing_at : now;
+  const expiresAt = addMonths(base, planInfo.periodMonths);
+
+  const oldBillingKey = userDoc && userDoc.billing_key;
+  const cardInfo = extractCardInfo(payment);
+
+  try {
+    await firestorePatchDoc(env, `users/${uid}`, {
+      subscription_status: "active",
+      subscription_plan: "annual",
+      payment_type: "one_time",
+      billing_key: null,
+      auto_renew: false,
+      cancel_at_period_end: true,
+      pending_plan: null,
+      billing_key_issued_at: wasActive && userDoc.billing_key_issued_at ? userDoc.billing_key_issued_at : now,
+      next_billing_at: expiresAt,
+      last_one_time_payment_id: paymentId,
+      ...(cardInfo || {}),
+    });
+  } catch (e) {
+    console.error("annual_user_update_failed", uid, paymentId, e);
+    return { ok: false, status: 500, error: "firestore_update_failed", detail: String(e.message || e) };
+  }
+
+  try {
+    await firestoreAddDoc(env, "payments", {
+      uid,
+      amount: planInfo.amount,
+      plan: "annual",
+      method: "카드",
+      status: "paid",
+      paid_at: now,
+      created_at: now,
+      created_by: createdBy,
+      payment_id: paymentId,
+      ...(cardInfo || {}),
+    });
+  } catch (e) {
+    // 이용 기간은 이미 부여했으니 결제내역 기록 실패는 로그만 남긴다(관리자 화면에서 수동 보완).
+    console.error("annual_payment_record_failed", uid, paymentId, e);
+  }
+
+  // 월간 자동결제를 쓰던 사용자가 연간으로 갈아탄 경우 -- 남은 월간 빌링키를 정리한다.
+  if (oldBillingKey) {
+    try {
+      await deleteBillingKey(env, oldBillingKey);
+    } catch (e) {
+      console.error("annual_delete_old_billing_key_failed", uid, e);
+    }
+  }
+
+  return { ok: true, expiresAt };
+}
+
+export async function handleAnnual(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (e) {
+    return jsonResponse({ error: "bad_json" }, 400);
+  }
+  const { paymentId } = body || {};
+  if (!paymentId || typeof paymentId !== "string" || !paymentId.startsWith(ANNUAL_PAYMENT_ID_PREFIX)) {
+    return jsonResponse({ error: "invalid_params" }, 400);
+  }
+
+  const result = await activateAnnualPurchase(env, user.uid, paymentId, "portone");
+  if (!result.ok) {
+    return jsonResponse({ error: result.error, detail: result.detail }, result.status || 500);
+  }
+  return jsonResponse({ ok: true, paymentId, expiresAt: result.expiresAt || null });
 }
 
 // 구독 해지 -- 즉시 끊지 않고, 이미 결제한 기간(next_billing_at)까지는 계속
@@ -241,6 +386,11 @@ export async function handleChangePlan(request, env, verifyFirebaseIdToken) {
   const { plan } = body || {};
   if (!PLANS[plan]) {
     return jsonResponse({ error: "invalid_params" }, 400);
+  }
+  // 연간은 단건 결제라 "다음 결제일부터 전환" 예약이 성립하지 않는다 -- 연간으로 바꾸려면
+  // /api/payments/annual 로 바로 결제해야 한다(남은 월간 기간은 뒤에 이어 붙여준다).
+  if (PLANS[plan].oneTime) {
+    return jsonResponse({ error: "one_time_plan", detail: "연간 플랜은 예약 전환이 아니라 바로 결제해서 이용해 주세요." }, 400);
   }
 
   let userDoc;
@@ -318,6 +468,43 @@ export async function handleUpdateCard(request, env, verifyFirebaseIdToken) {
   return jsonResponse({ ok: true });
 }
 
+// 구독 상태 조회(읽기 전용) -- PC 앱 등 클라이언트가 "지금 구독 중인가?"만 가볍게
+// 확인할 때 쓰는 엔드포인트. 2026.09 추가: 기존에는 subscribe/cancel/resume/
+// change-plan/update-card/webhook 등 상태를 "바꾸는" 라우트만 있고 그냥 "읽는"
+// 라우트가 없어서, PC 앱 쪽에 구독 상태를 반영할 방법이 없었다(로컬 앱 <-> 웹서비스
+// 사이엔 "구독 중인가?"만 확인하는 가벼운 API 호출 하나만 두는 설계 원칙 참고).
+// billing_key처럼 민감한 값은 응답에 포함하지 않는다.
+export async function handleStatus(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  let userDoc;
+  try {
+    userDoc = await firestoreGetDoc(env, `users/${user.uid}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+
+  if (!userDoc) {
+    return jsonResponse({ ok: true, subscription_status: "none" });
+  }
+
+  return jsonResponse({
+    ok: true,
+    subscription_status: userDoc.subscription_status || "none",
+    subscription_plan: userDoc.subscription_plan || null,
+    payment_type: userDoc.payment_type || (userDoc.billing_key ? "billing" : null),
+    pending_plan: userDoc.pending_plan || null,
+    auto_renew: userDoc.auto_renew !== false,
+    cancel_at_period_end: !!userDoc.cancel_at_period_end,
+    next_billing_at: userDoc.next_billing_at || null,
+    billing_key_issued_at: userDoc.billing_key_issued_at || null,
+    card_brand: userDoc.card_brand || null,
+    card_name: userDoc.card_name || null,
+    card_number: userDoc.card_number || null,
+  });
+}
+
 export async function handleWebhook(request, env) {
   const rawBody = await request.text();
   let event;
@@ -340,6 +527,21 @@ export async function handleWebhook(request, env) {
     payment = await getPayment(env, paymentId);
   } catch (e) {
     return jsonResponse({ error: "portone_get_payment_failed", detail: String(e.message || e) }, 502);
+  }
+
+  // 연간 단건 결제 -- 결제는 끝났는데 사용자가 결제창을 닫아서 /annual 확정 호출이
+  // 오지 못한 경우를 웹훅이 보정한다(이미 처리됐으면 멱등하게 건너뜀).
+  if (paymentId.startsWith(ANNUAL_PAYMENT_ID_PREFIX) && payment.status === "PAID") {
+    const payerUid = payment.customer && payment.customer.id;
+    if (!payerUid) {
+      console.error("annual_webhook_no_payer", paymentId);
+      return jsonResponse({ ok: true, ignored: true });
+    }
+    const activated = await activateAnnualPurchase(env, payerUid, paymentId, "portone-webhook");
+    if (!activated.ok && activated.status >= 500) {
+      return jsonResponse({ error: "internal_error" }, 500); // 포트원이 웹훅을 재전송하도록
+    }
+    return jsonResponse({ ok: true });
   }
 
   try {
@@ -370,6 +572,9 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
   if (url.pathname === "/api/payments/subscribe" && request.method === "POST") {
     return handleSubscribe(request, env, verifyFirebaseIdToken);
   }
+  if (url.pathname === "/api/payments/annual" && request.method === "POST") {
+    return handleAnnual(request, env, verifyFirebaseIdToken);
+  }
   if (url.pathname === "/api/payments/cancel" && request.method === "POST") {
     return handleCancel(request, env, verifyFirebaseIdToken);
   }
@@ -384,6 +589,9 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
   }
   if (url.pathname === "/api/payments/webhook" && request.method === "POST") {
     return handleWebhook(request, env);
+  }
+  if (url.pathname === "/api/payments/status" && request.method === "GET") {
+    return handleStatus(request, env, verifyFirebaseIdToken);
   }
   return null;
 }
@@ -408,11 +616,13 @@ export async function runScheduledBilling(env) {
   for (const userDoc of dueUsers) {
     const uid = userDoc.id;
     // 플랜 변경 예약(pending_plan)이 있으면 이번 재결제부터 새 플랜으로 청구한다.
-    const plan = userDoc.pending_plan || userDoc.subscription_plan;
+    let plan = userDoc.pending_plan || userDoc.subscription_plan;
+    if (PLANS[plan] && PLANS[plan].oneTime) plan = userDoc.subscription_plan; // 예전 "연간 전환 예약" 잔재는 무시
     const billingKey = userDoc.billing_key;
     const planInfo = PLANS[plan];
 
-    if (!planInfo || !billingKey) {
+    // 연간(단건) 플랜은 빌링키로 청구하지 않는다 -- 빌링키가 남아있는 예전 연간 구독자 잔재도 건너뜀.
+    if (!planInfo || planInfo.oneTime || !billingKey) {
       console.error("billing_skip_invalid_user", uid, plan);
       continue;
     }
