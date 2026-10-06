@@ -606,7 +606,7 @@
       const periodTs = subData.last_one_time_period_start || subData.annual_starts_at || subData.last_one_time_paid_at;
       const periodStart = periodTs && periodTs.toDate ? periodTs.toDate() : null;
       const paidDateForRefund = subData.last_one_time_paid_at && subData.last_one_time_paid_at.toDate ? subData.last_one_time_paid_at.toDate() : null;
-      const refundCalc = periodStart && subData.last_one_time_payment_id ? computeAnnualRefundClient(periodStart, new Date(), paidDateForRefund, !!subData.paid_feature_used_at) : null;
+      const refundCalc = periodStart && subData.last_one_time_payment_id ? computeAnnualRefundClient(periodStart, new Date(), paidDateForRefund, !!subData.paid_feature_used_at || (!!paidDateForRefund && !!subData.app_last_login_at && subData.app_last_login_at.toDate && subData.app_last_login_at.toDate().getTime() > paidDateForRefund.getTime())) : null;
       const canRefund = !!refundCalc && refundCalc.amount > 0;
       actionArea.innerHTML =
         (canExtend ? `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>` : '') +
@@ -618,7 +618,7 @@
         hint.textContent = refundCalc.mode === 'before_start'
           ? '아직 이용 전이라 28,000원 전액 환불할 수 있어요.'
           : refundCalc.mode === 'within_7days'
-            ? '결제 후 7일 이내라 28,000원 전액 환불할 수 있어요(유료 기능을 사용하지 않은 경우).'
+            ? '결제 후 7일 이내이고 기억숲 앱을 사용하지 않아 28,000원 전액 환불할 수 있어요.'
             : refundCalc.amount > 0
               ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불돼요 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtDateLocalAcc(refundCalc.endsAt)}까지는 계속 이용할 수 있어요.`
               : '사용 개월 수가 많아 환불할 금액이 없어요. 만료일까지 계속 이용하실 수 있어요.';

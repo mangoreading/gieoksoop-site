@@ -350,8 +350,9 @@ export async function handleAnnual(request, env, verifyFirebaseIdToken) {
 
 // 연간 이용권 셀프 취소(환불) -- 이용약관 제7조의 환불 규정:
 //  1) 이용 시작 전(월간 이용 중 결제해 아직 연간 기간이 시작되지 않은 경우 등): 28,000원 전액 환불.
-//  2) 결제 후 7일 이내이고 유료 기능을 사용한 이력이 없으면(users.paid_feature_used_at 없음): 전액 환불 + 즉시 종료.
-//     (유료 기능 사용 이력은 앱 게이팅이 구현되면 그쪽에서 기록한다. 지금은 기록하는 곳이 없어 7일 이내면 전액이다.)
+//  2) 결제 후 7일 이내이고 사용한 이력이 없으면: 전액 환불 + 즉시 종료.
+//     "사용" = 결제 이후에 기억숲 PC 앱에 로그인한 기록이 있는 경우(users.app_last_login_at > 결제 시각,
+//     PC 앱이 POST /api/payments/app-login 으로 남긴다). 앱 게이팅이 생기면 paid_feature_used_at 으로 더 세분화할 수 있다.
 //  3) 그 외(1일이라도 이용한 경우): 사용한 달(경과 개월을 올림, 최소 1개월)은 그대로 이용하게 하고
 //     환불액 = 28,000원 - 사용 개월 수 x 3,000원. 취소해도 이용 기간은 "시작일 + 사용 개월 수"까지 유지된다
 //     (예: 10/6 시작, 10/20 취소 → 사용 1개월 → 25,000원 환불, 11/6까지 이용). 환불액이 0원이면 환불할 금액이 없다.
@@ -452,7 +453,10 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
 
   const now = new Date();
   const paidAtDate = userDoc.last_one_time_paid_at && userDoc.last_one_time_paid_at.getTime ? userDoc.last_one_time_paid_at : null;
-  const calc = computeAnnualRefund(periodStart, now, { paidAt: paidAtDate, featureUsed: !!userDoc.paid_feature_used_at });
+  // "사용" 판단: 결제 이후에 기억숲 PC 앱에 로그인한 기록(app_last_login_at)이 있으면 사용한 것으로 본다.
+  const lastLogin = userDoc.app_last_login_at && userDoc.app_last_login_at.getTime ? userDoc.app_last_login_at : null;
+  const usedAfterPayment = !!(lastLogin && paidAtDate && lastLogin.getTime() > paidAtDate.getTime());
+  const calc = computeAnnualRefund(periodStart, now, { paidAt: paidAtDate, featureUsed: usedAfterPayment || !!userDoc.paid_feature_used_at });
   if (calc.amount <= 0) {
     return jsonResponse({ error: "no_refund_amount", usedMonths: calc.usedMonths }, 409);
   }
@@ -802,12 +806,28 @@ export async function handleWebhook(request, env) {
   return jsonResponse({ ok: true });
 }
 
+// PC 앱이 로그인에 성공했을 때(또는 로그인된 채 앱을 켰을 때) 호출 -- 마지막 로그인 시각만 기록한다.
+// 연간 이용권 환불 시 "사용 여부" 판단(결제 이후 PC 앱 로그인 기록)에 쓰인다.
+export async function handleAppLogin(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+  try {
+    await firestorePatchDoc(env, `users/${user.uid}`, { app_last_login_at: new Date() });
+  } catch (e) {
+    return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
+  }
+  return jsonResponse({ ok: true });
+}
+
 export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdToken) {
   if (url.pathname === "/api/payments/subscribe" && request.method === "POST") {
     return handleSubscribe(request, env, verifyFirebaseIdToken);
   }
   if (url.pathname === "/api/payments/annual" && request.method === "POST") {
     return handleAnnual(request, env, verifyFirebaseIdToken);
+  }
+  if (url.pathname === "/api/payments/app-login" && request.method === "POST") {
+    return handleAppLogin(request, env, verifyFirebaseIdToken);
   }
   if (url.pathname === "/api/payments/refund" && request.method === "POST") {
     return handleRefund(request, env, verifyFirebaseIdToken);
