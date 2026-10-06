@@ -503,16 +503,21 @@
     return startStr ? `구독 시작일: ${startStr} · ${label}: ${nextStr}` : `${label}: ${nextStr}`;
   }
 
-  // 서버(worker/src/payments.js computeAnnualRefund)와 같은 규칙 -- 사용 개월 수는 올림.
-  function computeAnnualRefundClient(periodStart, now) {
+  // 서버(worker/src/payments.js computeAnnualRefund)와 같은 규칙.
+  //  - before_start: 이용 시작 전 → 전액 / within_7days: 결제 후 7일 이내·유료 기능 미사용 → 전액·즉시 종료
+  //  - prorated: 사용 개월(올림, 최소 1개월)만큼 차감, 시작일 + 사용 개월까지 이용 유지
+  function computeAnnualRefundClient(periodStart, now, paidAt, featureUsed) {
     const price = 28000;
-    if (now.getTime() <= periodStart.getTime()) return { started: false, usedMonths: 0, amount: price };
     const addM = (d, n) => { const x = new Date(d.getTime()); x.setMonth(x.getMonth() + n); return x; };
+    if (now.getTime() <= periodStart.getTime()) return { mode: 'before_start', started: false, usedMonths: 0, amount: price, endsAt: null };
+    if (paidAt && now.getTime() - paidAt.getTime() <= 7 * 24 * 3600 * 1000 && !featureUsed) {
+      return { mode: 'within_7days', started: true, usedMonths: 0, amount: price, endsAt: null };
+    }
     let m = (now.getFullYear() - periodStart.getFullYear()) * 12 + (now.getMonth() - periodStart.getMonth());
     let anchor = addM(periodStart, m);
     if (anchor.getTime() > now.getTime()) { m -= 1; anchor = addM(periodStart, m); }
-    const used = anchor.getTime() === now.getTime() ? m : m + 1;
-    return { started: true, usedMonths: used, amount: Math.max(0, price - used * 3000) };
+    const used = Math.max(1, anchor.getTime() === now.getTime() ? m : m + 1);
+    return { mode: 'prorated', started: true, usedMonths: used, amount: Math.max(0, price - used * 3000), endsAt: addM(periodStart, used) };
   }
 
   function fmtDateLocalAcc(d) {
@@ -571,7 +576,13 @@
       const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
       const startsTs = subData.annual_starts_at;
       const startsAt = startsTs && startsTs.toDate ? startsTs.toDate() : null;
-      if (plan === 'monthly') {
+      const cancelReqTs = subData.annual_cancel_requested_at;
+      if (cancelReqTs && !subData.last_one_time_payment_id && plan !== 'monthly') {
+        // 연간 이용권을 취소(부분환불)했고, 사용한 달까지 이용이 유지되는 상태.
+        pill.textContent = '취소됨 (이용 종료 예정)';
+        pill.className = 'status-pill canceled';
+        desc.textContent = `${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요. 환불은 완료됐고, 그 이후에는 서비스가 종료돼요. 연간 이용권은 자동으로 갱신되지 않아요.`;
+      } else if (plan === 'monthly') {
         // 연간 결제를 환불해 월간 이용 기간만 남은 상태 -- 자동결제는 이미 종료됐다.
         pill.textContent = '이용 중 (월간 · 자동결제 종료)';
         pill.className = 'status-pill active';
@@ -589,12 +600,13 @@
       }
       const expDate = subData.next_billing_at && subData.next_billing_at.toDate ? subData.next_billing_at.toDate() : null;
       const extendFrom = expDate ? new Date(expDate.getFullYear(), expDate.getMonth() - 3, expDate.getDate()) : null;
-      const canExtend = plan !== 'monthly' && (!extendFrom || extendFrom.getTime() <= Date.now());
+      const canExtend = plan !== 'monthly' && (!!cancelReqTs || !extendFrom || extendFrom.getTime() <= Date.now());
       // 연간 이용권 직접 취소(환불) -- 환불액 = 28,000원 - (사용 개월 수 x 3,000원), 이용 시작 전이면 전액.
       // 서버가 같은 규칙으로 다시 계산한다(화면 금액과 다르면 다시 확인을 요청).
       const periodTs = subData.last_one_time_period_start || subData.annual_starts_at || subData.last_one_time_paid_at;
       const periodStart = periodTs && periodTs.toDate ? periodTs.toDate() : null;
-      const refundCalc = periodStart && subData.last_one_time_payment_id ? computeAnnualRefundClient(periodStart, new Date()) : null;
+      const paidDateForRefund = subData.last_one_time_paid_at && subData.last_one_time_paid_at.toDate ? subData.last_one_time_paid_at.toDate() : null;
+      const refundCalc = periodStart && subData.last_one_time_payment_id ? computeAnnualRefundClient(periodStart, new Date(), paidDateForRefund, !!subData.paid_feature_used_at) : null;
       const canRefund = !!refundCalc && refundCalc.amount > 0;
       actionArea.innerHTML =
         (canExtend ? `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>` : '') +
@@ -603,19 +615,23 @@
         const hint = document.createElement('p');
         hint.className = 'muted';
         hint.style.cssText = 'margin:10px 0 0;font-size:13px;';
-        hint.textContent = !refundCalc.started
+        hint.textContent = refundCalc.mode === 'before_start'
           ? '아직 이용 전이라 28,000원 전액 환불할 수 있어요.'
-          : refundCalc.amount > 0
-            ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불돼요 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원).`
-            : '사용 개월 수가 많아 환불할 금액이 없어요. 만료일까지 계속 이용하실 수 있어요.';
+          : refundCalc.mode === 'within_7days'
+            ? '결제 후 7일 이내라 28,000원 전액 환불할 수 있어요(유료 기능을 사용하지 않은 경우).'
+            : refundCalc.amount > 0
+              ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불돼요 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtDateLocalAcc(refundCalc.endsAt)}까지는 계속 이용할 수 있어요.`
+              : '사용 개월 수가 많아 환불할 금액이 없어요. 만료일까지 계속 이용하실 수 있어요.';
         actionArea.appendChild(hint);
       }
       if (canRefund) {
         document.getElementById('refundAnnualBtn').addEventListener('click', async () => {
           const btn = document.getElementById('refundAnnualBtn');
-          const msg = refundCalc.started
-            ? `${refundCalc.amount.toLocaleString()}원이 카드로 환불되고(28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원), 연간 이용권은 바로 종료돼요. 취소하시겠어요?`
-            : '28,000원이 카드로 전액 환불돼요. 이번 연간 결제로 늘어난 이용 기간은 사라지고, 월간 이용 중이었다면 원래 월간 만료일까지만 이용할 수 있어요(월간 자동결제는 다시 시작되지 않아요). 취소하시겠어요?';
+          const msg = refundCalc.mode === 'prorated'
+            ? `${refundCalc.amount.toLocaleString()}원이 카드로 환불돼요(28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtDateLocalAcc(refundCalc.endsAt)}까지는 계속 이용할 수 있고, 그 이후 연간 이용권이 종료돼요. 취소하시겠어요?`
+            : refundCalc.mode === 'within_7days'
+              ? '28,000원이 카드로 전액 환불되고, 연간 이용권은 바로 종료돼요. 취소하시겠어요?'
+              : '28,000원이 카드로 전액 환불돼요. 이번 연간 결제로 늘어난 이용 기간은 사라지고, 월간 이용 중이었다면 원래 월간 만료일까지만 이용할 수 있어요(월간 자동결제는 다시 시작되지 않아요). 취소하시겠어요?';
           const confirmed = await showConfirm(msg, { title: '연간 이용권 취소(환불)', okText: '취소하기', danger: true });
           if (!confirmed) return;
           await runRefundAnnual(btn, refundCalc.amount);

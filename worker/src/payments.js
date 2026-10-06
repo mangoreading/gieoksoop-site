@@ -285,6 +285,7 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
       billing_key_issued_at: wasActive && userDoc.billing_key_issued_at ? userDoc.billing_key_issued_at : now,
       next_billing_at: expiresAt,
       annual_starts_at: annualStartsAt,
+      annual_cancel_requested_at: null,
       last_one_time_payment_id: paymentId,
       last_one_time_paid_at: now,
       last_one_time_period_start: base,
@@ -348,18 +349,21 @@ export async function handleAnnual(request, env, verifyFirebaseIdToken) {
 }
 
 // 연간 이용권 셀프 취소(환불) -- 이용약관 제7조의 환불 규정:
-//  - 이용 시작 전(월간 이용 중 결제해 아직 연간 기간이 시작되지 않았거나 시작 시각 이전): 28,000원 전액 환불.
-//  - 이용 시작 후: 환불액 = 28,000원 - (사용 개월 수 x 3,000원). 사용 개월 수는 연간 기간 시작일부터 경과한
-//    개월 수를 올림(1일을 써도 1개월)한다. 환불액이 0원 이하이면 환불할 금액이 없다(자동 갱신이 없으므로 그냥 만료까지 이용).
-//  - 가장 최근 연간 결제 1건만 대상. 포트원 결제 취소(부분취소 포함)에 성공한 뒤에만 이용 기간을 줄인다.
+//  1) 이용 시작 전(월간 이용 중 결제해 아직 연간 기간이 시작되지 않은 경우 등): 28,000원 전액 환불.
+//  2) 결제 후 7일 이내이고 유료 기능을 사용한 이력이 없으면(users.paid_feature_used_at 없음): 전액 환불 + 즉시 종료.
+//     (유료 기능 사용 이력은 앱 게이팅이 구현되면 그쪽에서 기록한다. 지금은 기록하는 곳이 없어 7일 이내면 전액이다.)
+//  3) 그 외(1일이라도 이용한 경우): 사용한 달(경과 개월을 올림, 최소 1개월)은 그대로 이용하게 하고
+//     환불액 = 28,000원 - 사용 개월 수 x 3,000원. 취소해도 이용 기간은 "시작일 + 사용 개월 수"까지 유지된다
+//     (예: 10/6 시작, 10/20 취소 → 사용 1개월 → 25,000원 환불, 11/6까지 이용). 환불액이 0원이면 환불할 금액이 없다.
+//  가장 최근 연간 결제 1건만 대상. 포트원 결제 취소(부분취소 포함)에 성공한 뒤에만 이용 기간을 바꾼다.
 // 취소 후 상태:
-//  - 이용이 이미 시작된 연간: 구독이 바로 종료(canceled).
-//  - 월간 이용 중에 결제해 아직 시작 전인 연간: 원래 월간 만료일까지만 남는다(월간 자동결제는 연간 결제 때 이미
-//    종료됐으므로 되살아나지 않는다).
-//  - 연간을 미리 연장(2번째 결제)해 아직 시작 전인 분: 이번 결제분 12개월만 줄어든다.
+//  - 1)·2) 중 이용이 이미 시작된 연간: 구독이 바로 종료(canceled).
+//  - 1) 중 월간 이용 중에 결제해 아직 시작 전인 연간: 원래 월간 만료일까지만 남는다(월간 자동결제는 연간
+//    결제 때 이미 종료됐으므로 되살아나지 않는다).
+//  - 1) 중 연간을 미리 연장(2번째 결제)해 아직 시작 전인 분: 이번 결제분 12개월만 줄어든다.
+//  - 3): 이용 기간이 "시작일 + 사용 개월 수"로 줄어들고 그날 종료된다(annual_cancel_requested_at 기록).
 const MONTHLY_PRICE = PLANS.monthly.amount;
-// 이용 시작 후 이 시간(시간 단위) 이내에는 사용 개월 수를 0으로 본다(전액 환불). 0이면 적용 안 함.
-const REFUND_FULL_WITHIN_HOURS = 0;
+const FULL_REFUND_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 // 시작일부터 now까지 경과한 개월 수(올림). now가 시작일 이전이거나 같으면 0.
 function usedMonthsCeil(start, now) {
@@ -373,15 +377,25 @@ function usedMonthsCeil(start, now) {
   return anchor.getTime() === now.getTime() ? m : m + 1;
 }
 
-// 연간 결제 1건의 환불액 계산. periodStart: 그 결제로 늘어난 12개월 기간의 시작 시각.
-export function computeAnnualRefund(periodStart, now) {
+// 연간 결제 1건의 환불 계산. periodStart: 그 결제로 늘어난 12개월 기간의 시작 시각.
+// ctx.paidAt: 결제 시각, ctx.featureUsed: 유료 기능 사용 이력 여부.
+// mode: "before_start"(전액·시작 전) | "within_7days"(전액·즉시 종료) | "prorated"(사용 개월 차감, 사용한 달까지 이용 유지)
+export function computeAnnualRefund(periodStart, now, ctx = {}) {
   const price = PLANS.annual.amount;
-  if (now.getTime() <= periodStart.getTime()) return { started: false, usedMonths: 0, amount: price };
-  if (REFUND_FULL_WITHIN_HOURS > 0 && now.getTime() - periodStart.getTime() <= REFUND_FULL_WITHIN_HOURS * 3600 * 1000) {
-    return { started: true, usedMonths: 0, amount: price };
+  if (now.getTime() <= periodStart.getTime()) {
+    return { mode: "before_start", started: false, usedMonths: 0, amount: price, endsAt: null };
   }
-  const used = usedMonthsCeil(periodStart, now);
-  return { started: true, usedMonths: used, amount: Math.max(0, price - used * MONTHLY_PRICE) };
+  if (ctx.paidAt && now.getTime() - ctx.paidAt.getTime() <= FULL_REFUND_WINDOW_MS && !ctx.featureUsed) {
+    return { mode: "within_7days", started: true, usedMonths: 0, amount: price, endsAt: null };
+  }
+  const used = Math.max(1, usedMonthsCeil(periodStart, now));
+  return {
+    mode: "prorated",
+    started: true,
+    usedMonths: used,
+    amount: Math.max(0, price - used * MONTHLY_PRICE),
+    endsAt: addMonths(periodStart, used),
+  };
 }
 
 // 환불 계산에 쓰는 "이번 연간 결제 기간의 시작 시각". 결제 시 저장한 값을 우선 쓰고,
@@ -437,7 +451,8 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   }
 
   const now = new Date();
-  const calc = computeAnnualRefund(periodStart, now);
+  const paidAtDate = userDoc.last_one_time_paid_at && userDoc.last_one_time_paid_at.getTime ? userDoc.last_one_time_paid_at : null;
+  const calc = computeAnnualRefund(periodStart, now, { paidAt: paidAtDate, featureUsed: !!userDoc.paid_feature_used_at });
   if (calc.amount <= 0) {
     return jsonResponse({ error: "no_refund_amount", usedMonths: calc.usedMonths }, 409);
   }
@@ -477,7 +492,17 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   };
   let patch;
   let outcome;
-  if (calc.started) {
+  if (calc.mode === "prorated") {
+    // 사용한 달까지는 이용 유지 -- 자동 갱신이 없으니 그날 기존 만료 패스가 구독을 끝낸다.
+    patch = {
+      next_billing_at: calc.endsAt,
+      annual_starts_at: null,
+      auto_renew: false,
+      cancel_at_period_end: true,
+      annual_cancel_requested_at: now,
+    };
+    outcome = "ends_at_used_month_end";
+  } else if (calc.started) {
     patch = endedPatch;
     outcome = "ended";
   } else if (startsAt && newExpiry && newExpiry.getTime() <= startsAt.getTime() + TOLERANCE_MS) {
@@ -525,6 +550,7 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
     outcome,
     refundedAmount: calc.amount,
     usedMonths: calc.usedMonths,
+    mode: calc.mode,
     validUntil: patch.next_billing_at || null,
   });
 }

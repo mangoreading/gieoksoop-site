@@ -135,7 +135,7 @@
 
     <p class="pricing-note">
       월간 구독은 결제 주기가 끝나면 자동으로 갱신·결제되고, 해지해도 이미 결제한 기간까지는 계속 이용할 수 있어요.<br>
-      연간 이용권은 이용 시작 전에 취소하면 전액, 시작 후에는 28,000원에서 사용 개월 수 × 3,000원을 뺀 금액이 환불돼요(내 계정 &gt; 구독관리에서 직접 취소).<br>
+      연간 이용권은 결제 후 7일 이내(유료 기능 미사용 시) 또는 이용 시작 전에는 전액 환불돼요. 그 후에는 28,000원에서 사용 개월 수 × 3,000원을 뺀 금액이 환불되고, 사용한 달까지는 계속 이용할 수 있어요(내 계정 &gt; 구독관리에서 직접 취소).<br>
       연간 이용권은 1회 결제로 1년간 이용하며 자동 갱신되지 않아요. 만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.<br>
       월간 이용 중에 연간 이용권을 결제하면 남은 월간 기간 뒤에 1년이 더해지고, 월간 자동결제는 종료돼요.
     </p>
@@ -447,6 +447,16 @@
       if (!currentSub || currentSub.subscription_status !== 'active') return;
 
       if (isOneTimeActive()) {
+        if (currentSub.annual_cancel_requested_at && currentSub.subscription_plan !== 'monthly') {
+          // 연간 이용권을 취소(부분환불)해 사용한 달까지만 이용 중 -- 다시 결제하면 이어서 이용할 수 있다.
+          if (plan === 'annual') {
+            btn.textContent = '연간 이용권 다시 결제하기 (28,000원)';
+          } else {
+            const exp = annualExpiryDate();
+            muted('연간 이용권 이용 중이에요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+          }
+          return;
+        }
         if (currentSub.subscription_plan === 'monthly') {
           // 연간 결제를 환불해 월간 이용 기간만 남은 상태(자동결제 종료).
           if (plan === 'monthly') {
@@ -772,7 +782,7 @@
     if (!user) return;
 
     if (plan === 'annual') {
-      if (isOneTimeActive() && currentSub.subscription_plan !== 'monthly' && !canExtendAnnual()) {
+      if (isOneTimeActive() && currentSub.subscription_plan !== 'monthly' && !currentSub.annual_cancel_requested_at && !canExtendAnnual()) {
         await showAlert('연간 이용권은 만료 3개월 전부터 연장할 수 있어요.', { title: '아직 연장할 수 없어요' });
         return;
       }
