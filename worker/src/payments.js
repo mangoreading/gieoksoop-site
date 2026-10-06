@@ -258,6 +258,20 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
   const oldBillingKey = userDoc && userDoc.billing_key;
   const cardInfo = extractCardInfo(payment);
 
+  // 연간 이용이 "실제로 시작되는 시점" -- 월간 이용 중에 연간을 결제한 경우 월간 만료일부터 연간이
+  // 시작된다(그 전까지는 월간 이용 기간). 이미 연간 이용권을 쓰던 사용자는 기존 시작 시점을 유지하고,
+  // 이미 시작된 연간이면 null. 화면이 "월간 이용 중 → 이후 연간" 안내를 정확히 보여주는 데 쓴다.
+  let annualStartsAt = null;
+  if (wasActive) {
+    const prevWasOneTime = userDoc.payment_type === "one_time";
+    if (prevWasOneTime) {
+      const prevStart = userDoc.annual_starts_at;
+      annualStartsAt = prevStart && prevStart.getTime() > now.getTime() ? prevStart : null;
+    } else if (userDoc.next_billing_at.getTime() > now.getTime()) {
+      annualStartsAt = userDoc.next_billing_at;
+    }
+  }
+
   try {
     await firestorePatchDoc(env, `users/${uid}`, {
       subscription_status: "active",
@@ -269,6 +283,7 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
       pending_plan: null,
       billing_key_issued_at: wasActive && userDoc.billing_key_issued_at ? userDoc.billing_key_issued_at : now,
       next_billing_at: expiresAt,
+      annual_starts_at: annualStartsAt,
       last_one_time_payment_id: paymentId,
       ...(cardInfo || {}),
     });
@@ -494,6 +509,7 @@ export async function handleStatus(request, env, verifyFirebaseIdToken) {
     subscription_status: userDoc.subscription_status || "none",
     subscription_plan: userDoc.subscription_plan || null,
     payment_type: userDoc.payment_type || (userDoc.billing_key ? "billing" : null),
+    annual_starts_at: userDoc.annual_starts_at || null,
     pending_plan: userDoc.pending_plan || null,
     auto_renew: userDoc.auto_renew !== false,
     cancel_at_period_end: !!userDoc.cancel_at_period_end,

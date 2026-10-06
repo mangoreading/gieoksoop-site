@@ -553,10 +553,19 @@
     if (status === 'active' && isOneTime) {
       // 연간 이용권 -- 자동 갱신/해지/카드 변경이 없는 1회 결제. "해지 예정"이 아니라 이용 기간으로 안내.
       const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
-      pill.textContent = '이용 중 (연간 이용권)';
-      pill.className = 'status-pill active';
-      desc.textContent = (untilStr ? `${untilStr}까지 이용하실 수 있어요. ` : '') +
-        '연간 이용권은 자동으로 갱신되지 않아요. 만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.';
+      const startsTs = subData.annual_starts_at;
+      const startsAt = startsTs && startsTs.toDate ? startsTs.toDate() : null;
+      if (startsAt && startsAt.getTime() > Date.now()) {
+        // 월간 이용 중 연간을 결제해 둔 상태 -- 월간 만료일까지는 월간, 그 뒤부터 연간.
+        pill.textContent = '이용 중 (월간 → 연간 예정)';
+        pill.className = 'status-pill active';
+        desc.textContent = `${fmtDate(startsTs)}까지는 월간 이용 기간이고, 그 뒤부터 ${untilStr || ''}까지 연간 이용권이 이어서 적용돼요. 월간 자동결제는 종료됐고, 연간 이용권은 자동으로 갱신되지 않아요.`;
+      } else {
+        pill.textContent = '이용 중 (연간 이용권)';
+        pill.className = 'status-pill active';
+        desc.textContent = (untilStr ? `${untilStr}까지 이용하실 수 있어요. ` : '') +
+          '연간 이용권은 자동으로 갱신되지 않아요. 만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.';
+      }
       const expDate = subData.next_billing_at && subData.next_billing_at.toDate ? subData.next_billing_at.toDate() : null;
       const extendFrom = expDate ? new Date(expDate.getFullYear(), expDate.getMonth() - 3, expDate.getDate()) : null;
       actionArea.innerHTML = (!extendFrom || extendFrom.getTime() <= Date.now())
