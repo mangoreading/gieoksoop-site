@@ -135,7 +135,7 @@
 
     <p class="pricing-note">
       월간 구독은 결제 주기가 끝나면 자동으로 갱신·결제되고, 해지해도 이미 결제한 기간까지는 계속 이용할 수 있어요.<br>
-      연간 이용권은 1회 결제로 1년간 이용하며 자동 갱신되지 않아요. 만료 전에 다시 결제하면 남은 기간 뒤에 1년이 이어서 더해져요.<br>
+      연간 이용권은 1회 결제로 1년간 이용하며 자동 갱신되지 않아요. 만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.<br>
       월간 이용 중에 연간 이용권을 결제하면 남은 월간 기간 뒤에 1년이 더해지고, 월간 자동결제는 종료돼요.
     </p>
 
@@ -248,6 +248,18 @@
       if (cur.getTime() > base.getTime()) base = cur;
     }
     return addMonthsLocal(base, 12);
+  }
+
+  // 연간 이용권은 만료 3개월 전부터만 연장(재결제)할 수 있다 -- 한 번에 여러 해를 미리 결제하는 일을 막는다.
+  const ANNUAL_EXTEND_WINDOW_MONTHS = 3;
+  function annualExpiryDate() {
+    const ts = currentSub && currentSub.next_billing_at;
+    return ts && ts.toDate ? ts.toDate() : null;
+  }
+  function canExtendAnnual() {
+    const exp = annualExpiryDate();
+    if (!exp) return true;
+    return exp.getTime() <= addMonthsLocal(new Date(), ANNUAL_EXTEND_WINDOW_MONTHS).getTime();
   }
 
   function isOneTimeActive() {
@@ -419,7 +431,12 @@
 
       if (isOneTimeActive()) {
         if (plan === 'annual') {
-          btn.textContent = '1년 더 연장하기 (28,000원)';
+          if (canExtendAnnual()) {
+            btn.textContent = '1년 더 연장하기 (28,000원)';
+          } else {
+            const exp = annualExpiryDate();
+            muted('이용 중이에요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+          }
         } else {
           muted('연간 이용권 이용 중이에요');
         }
@@ -714,6 +731,10 @@
     if (!user) return;
 
     if (plan === 'annual') {
+      if (isOneTimeActive() && !canExtendAnnual()) {
+        await showAlert('연간 이용권은 만료 3개월 전부터 연장할 수 있어요.', { title: '아직 연장할 수 없어요' });
+        return;
+      }
       if (!PORTONE_ANNUAL_CHANNEL_KEY) {
         await showAlert('연간 결제는 곧 열려요. 조금만 기다려 주세요.', { title: '준비 중' });
         return;

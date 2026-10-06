@@ -556,8 +556,12 @@
       pill.textContent = '이용 중 (연간 이용권)';
       pill.className = 'status-pill active';
       desc.textContent = (untilStr ? `${untilStr}까지 이용하실 수 있어요. ` : '') +
-        '연간 이용권은 자동으로 갱신되지 않아요. 만료 전에 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.';
-      actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>`;
+        '연간 이용권은 자동으로 갱신되지 않아요. 만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.';
+      const expDate = subData.next_billing_at && subData.next_billing_at.toDate ? subData.next_billing_at.toDate() : null;
+      const extendFrom = expDate ? new Date(expDate.getFullYear(), expDate.getMonth() - 3, expDate.getDate()) : null;
+      actionArea.innerHTML = (!extendFrom || extendFrom.getTime() <= Date.now())
+        ? `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>`
+        : '';
     } else if (status === 'active') {
       const autoRenew = subData.auto_renew !== false;
       const pendingPlan = subData.pending_plan || null;
