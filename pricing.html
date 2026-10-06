@@ -448,7 +448,10 @@
       }
     }
     renderPlanButtons();
-    if (user) await handlePaymentRedirectReturn();
+    if (user) {
+      const handled = await handlePaymentRedirectReturn();
+      if (!handled) await reconcilePendingAnnual();
+    }
   });
 
   // 신규 구독(또는 해지 후 재구독) -- 빌링키를 새로 발급하고 즉시 첫 결제를 진행한다.
@@ -552,6 +555,8 @@
 
     try {
       const paymentId = 'ann_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      // 결제창이 멈추거나 탭이 닫혀도 나중에 이 결제를 서버에서 다시 확인할 수 있게 기록해 둔다.
+      setPendingAnnual(paymentId);
       const response = await window.PortOne.requestPayment({
         storeId: PORTONE_STORE_ID,
         channelKey: PORTONE_ANNUAL_CHANNEL_KEY,
@@ -572,6 +577,7 @@
 
       if (!response) return; // 리디렉션 방식으로 넘어간 경우
       if (response.code) {
+        clearPendingAnnual();
         if (/CANCEL|취소/i.test(String(response.code) + String(response.message || ''))) return; // 사용자가 결제창을 닫음
         const retry = await showRetryableError(friendlyBillingError(response.message || response.code), { title: '결제 실패' });
         if (retry) return runAnnualPayment({ fullName, phoneNumber }, btn);
@@ -586,6 +592,51 @@
       setPgDim(false);
       subscribeButtons.forEach((b) => setBtnLoading(b, false));
     }
+  }
+
+  // 결제 진행 중인 paymentId를 브라우저에 잠깐 기억해 두었다가, 결제창이 멈춘 채로 닫거나
+  // 새로고침해도 페이지를 다시 열 때 서버에 한 번 확인(이미 결제됐으면 이용 기간 반영)한다.
+  const PENDING_ANNUAL_KEY = 'gks_pending_annual_payment';
+  function setPendingAnnual(paymentId) {
+    try { localStorage.setItem(PENDING_ANNUAL_KEY, JSON.stringify({ id: paymentId, t: Date.now() })); } catch (e) { /* 저장 불가 환경은 무시 */ }
+  }
+  function takePendingAnnual() {
+    try {
+      const raw = localStorage.getItem(PENDING_ANNUAL_KEY);
+      if (!raw) return null;
+      localStorage.removeItem(PENDING_ANNUAL_KEY);
+      const v = JSON.parse(raw);
+      if (!v || !v.id || Date.now() - v.t > 24 * 60 * 60 * 1000) return null;
+      return v.id;
+    } catch (e) {
+      return null;
+    }
+  }
+  function clearPendingAnnual() {
+    try { localStorage.removeItem(PENDING_ANNUAL_KEY); } catch (e) { /* 무시 */ }
+  }
+
+  // 이전에 멈춘 결제가 실제로는 승인됐는지 조용히 확인한다. 결제가 안 됐으면 아무 안내도 하지 않는다.
+  async function reconcilePendingAnnual() {
+    const paymentId = takePendingAnnual();
+    if (!paymentId) return false;
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/payments/annual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ paymentId: paymentId }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data && data.ok) {
+        await showAlert('이전에 진행한 연간 결제가 확인되어 이용 기간에 반영했어요.', { title: '결제 확인', icon: { type: 'success', glyph: '✓' } });
+        window.location.reload();
+        return true;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return false;
   }
 
   // 결제는 끝났고 서버에 이용 기간 부여를 요청하는 단계. 실패해도 웹훅이 백업으로 처리하니
@@ -605,12 +656,16 @@
       console.error(e);
     }
     if (!res.ok || !data || !data.ok) {
-      await showAlert('결제는 완료됐지만 이용 기간 반영 중 문제가 발생했어요. 잠시 후 계정 페이지에서 확인해 주세요. 계속 반영되지 않으면 문의해 주세요. (결제번호: ' + paymentId + ')', {
+      // 실패 시에는 pending 기록을 남겨 두어, 새로고침하면 한 번 더 자동 확인한다.
+      const code = data && data.error ? data.error : 'HTTP ' + res.status;
+      console.error('annual_activate_failed', res.status, data);
+      await showAlert('결제는 완료됐지만 이용 기간 반영 중 문제가 발생했어요. 잠시 후 계정 페이지에서 확인해 주세요. 계속 반영되지 않으면 문의해 주세요. (결제번호: ' + paymentId + ', 오류: ' + code + ')', {
         title: '반영 지연',
         icon: { type: 'error', glyph: '!' },
       });
       return;
     }
+    clearPendingAnnual();
     const expiry = data.expiresAt ? new Date(data.expiresAt) : annualExpiryPreview();
     await showReceipt('연간 이용권 결제가 완료됐어요.', [
       { k: '플랜', v: '연간 이용권' },
