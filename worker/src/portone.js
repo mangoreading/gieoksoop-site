@@ -43,7 +43,7 @@ export async function cancelPayment(env, paymentId, reason, options = {}) {
     },
     body: JSON.stringify({
       reason,
-      requester: "CUSTOMER",
+      requester: options.requester || "CUSTOMER",
       ...(options.amount != null ? { amount: options.amount } : {}),
       ...(options.currentCancellableAmount != null ? { currentCancellableAmount: options.currentCancellableAmount } : {}),
     }),

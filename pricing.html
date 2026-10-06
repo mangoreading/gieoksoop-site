@@ -453,7 +453,7 @@
             btn.textContent = '연간 이용권 다시 결제하기 (28,000원)';
           } else {
             const exp = annualExpiryDate();
-            muted('연간 이용권 이용 중이에요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+            muted('연간 이용권 이용 중 · 월간은 선택할 수 없어요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
           }
           return;
         }
@@ -484,10 +484,10 @@
             btn.textContent = '1년 더 연장하기 (28,000원)';
           } else {
             const exp = annualExpiryDate();
-            muted('이용 중이에요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+            muted('연간 이용권 이용 중' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
           }
         } else {
-          muted('연간 이용권 이용 중이에요');
+          muted('연간 이용 중에는 월간을 선택할 수 없어요');
         }
         return;
       }

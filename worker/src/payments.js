@@ -559,6 +559,156 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   });
 }
 
+// ---- 관리자 카드 취소(환불) ----
+// 관리자 사이트(admin.gieoksoop.com)에서 호출한다. 호출자가 Firebase 로그인 + admins/{uid} 문서가 있는
+// 관리자인지 서버에서 직접 확인한다(화면의 관리자 체크는 UI용일 뿐). 포트원에 실제 카드 취소(전액/부분)를
+// 요청하고, 결제 기록과(선택 시) 이용 권한을 함께 정리한다.
+const ADMIN_ORIGINS = ["https://admin.gieoksoop.com"];
+
+function adminCorsHeaders(request) {
+  const origin = request.headers.get("Origin") || "";
+  const headers = { Vary: "Origin" };
+  if (ADMIN_ORIGINS.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type";
+    headers["Access-Control-Allow-Methods"] = "POST, OPTIONS";
+    headers["Access-Control-Max-Age"] = "600";
+  }
+  return headers;
+}
+
+function withHeaders(res, extra) {
+  const headers = new Headers(res.headers);
+  Object.entries(extra).forEach(([k, v]) => headers.set(k, v));
+  return new Response(res.body, { status: res.status, headers });
+}
+
+export async function handleAdminRefund(request, env, verifyFirebaseIdToken) {
+  const cors = adminCorsHeaders(request);
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  const res = await adminRefundInner(request, env, verifyFirebaseIdToken);
+  return withHeaders(res, cors);
+}
+
+async function adminRefundInner(request, env, verifyFirebaseIdToken) {
+  const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  let adminDoc = null;
+  try {
+    adminDoc = await firestoreGetDoc(env, `admins/${user.uid}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+  if (!adminDoc) {
+    console.error("admin_refund_forbidden", user.uid);
+    return jsonResponse({ error: "not_admin" }, 403);
+  }
+  const adminLabel = user.email || user.uid;
+
+  let body = {};
+  try {
+    body = (await request.json()) || {};
+  } catch (e) {
+    return jsonResponse({ error: "bad_request" }, 400);
+  }
+  const paymentId = typeof body.paymentId === "string" ? body.paymentId : "";
+  const reason = (typeof body.reason === "string" ? body.reason.trim() : "").slice(0, 200) || "관리자 취소";
+  const endAccess = body.endAccess === true;
+  if (!paymentId) return jsonResponse({ error: "payment_id_required" }, 400);
+
+  let rows;
+  try {
+    rows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+  const record = rows[0];
+  if (!record) return jsonResponse({ error: "payment_record_not_found" }, 404);
+
+  let payment;
+  try {
+    payment = await getPayment(env, paymentId);
+  } catch (e) {
+    return jsonResponse({ error: "portone_get_payment_failed", detail: String(e.message || e) }, 502);
+  }
+  if (payment.status !== "PAID" && payment.status !== "PARTIAL_CANCELLED") {
+    return jsonResponse({ error: "payment_not_cancellable", detail: payment.status }, 409);
+  }
+  const total = (payment.amount && payment.amount.total) || 0;
+  const alreadyCancelled = (payment.amount && payment.amount.cancelled) || 0;
+  const cancellable = total - alreadyCancelled;
+  if (cancellable <= 0) return jsonResponse({ error: "nothing_to_cancel" }, 409);
+
+  const amount = body.amount === undefined || body.amount === null ? cancellable : Math.floor(Number(body.amount));
+  if (!Number.isFinite(amount) || amount <= 0 || amount > cancellable) {
+    return jsonResponse({ error: "invalid_amount", cancellable }, 400);
+  }
+
+  const cancel = await cancelPayment(env, paymentId, `관리자 취소: ${reason}`, {
+    amount,
+    currentCancellableAmount: cancellable,
+    requester: "ADMIN",
+  });
+  if (!cancel.ok) {
+    console.error("admin_refund_cancel_failed", adminLabel, paymentId, cancel.status, JSON.stringify(cancel.data));
+    return jsonResponse({ error: "portone_cancel_failed", detail: cancel.data && (cancel.data.message || cancel.data.type) }, 502);
+  }
+
+  const now = new Date();
+  const refundedTotal = alreadyCancelled + amount;
+  try {
+    await firestorePatchDoc(env, `payments/${record.id}`, {
+      status: refundedTotal >= total ? "refunded" : "partial_refunded",
+      refunded_amount: refundedTotal,
+      refund_reason: reason,
+      refunded_by: adminLabel,
+      refunded_at: now,
+    });
+  } catch (e) {
+    console.error("admin_refund_record_failed", paymentId, e);
+  }
+
+  let accessEnded = false;
+  if (endAccess && record.uid) {
+    try {
+      const userDoc = await firestoreGetDoc(env, `users/${record.uid}`);
+      const patch = {
+        subscription_status: "canceled",
+        cancel_at_period_end: false,
+        auto_renew: false,
+        next_billing_at: null,
+        annual_starts_at: null,
+        billing_key: null,
+        card_brand: null,
+        card_name: null,
+        card_number: null,
+        card_issuer: null,
+        pending_plan: null,
+        last_one_time_payment_id: null,
+        last_one_time_paid_at: null,
+        last_one_time_period_start: null,
+        annual_cancel_requested_at: null,
+        last_refunded_payment_id: paymentId,
+      };
+      if (userDoc && userDoc.billing_key) {
+        try {
+          await deleteBillingKey(env, userDoc.billing_key);
+        } catch (e) {
+          console.error("admin_refund_delete_billing_key_failed", record.uid, e);
+        }
+      }
+      await firestorePatchDoc(env, `users/${record.uid}`, patch);
+      accessEnded = true;
+    } catch (e) {
+      console.error("admin_refund_user_update_failed", record.uid, paymentId, e);
+    }
+  }
+
+  console.log("admin_refund_done", adminLabel, paymentId, amount, endAccess);
+  return jsonResponse({ ok: true, refundedAmount: amount, refundedTotal, fullyRefunded: refundedTotal >= total, accessEnded });
+}
+
 // 구독 해지 -- 즉시 끊지 않고, 이미 결제한 기간(next_billing_at)까지는 계속
 // 이용할 수 있게 자동 재결제만 끈다(ChatGPT/Claude 등 흔한 LLM 구독 서비스와
 // 동일한 방식). 실제 구독 종료 처리는 runScheduledBilling의 만료 처리 패스에서
@@ -820,6 +970,9 @@ export async function handleAppLogin(request, env, verifyFirebaseIdToken) {
 }
 
 export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdToken) {
+  if (url.pathname === "/api/payments/admin-refund" && (request.method === "POST" || request.method === "OPTIONS")) {
+    return handleAdminRefund(request, env, verifyFirebaseIdToken);
+  }
   if (url.pathname === "/api/payments/subscribe" && request.method === "POST") {
     return handleSubscribe(request, env, verifyFirebaseIdToken);
   }
