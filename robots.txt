@@ -1,0 +1,36 @@
+# 기억숲 (gieoksoop.com)
+# 검색엔진과 AI 검색/답변 서비스가 사이트를 읽을 수 있도록 모두 허용합니다.
+User-agent: *
+Allow: /
+
+# 주요 AI 검색·답변 크롤러 (명시적으로 허용)
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+User-agent: GPTBot
+Allow: /
+User-agent: Claude-SearchBot
+Allow: /
+User-agent: Claude-User
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Perplexity-User
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: Applebot
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+User-agent: Bingbot
+Allow: /
+User-agent: Yeti
+Allow: /
+User-agent: Daumoa
+Allow: /
+
+Sitemap: https://gieoksoop.com/sitemap.xml
