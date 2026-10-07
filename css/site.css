@@ -513,3 +513,18 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
   .privacy{padding:36px 24px;}
   .card{padding:36px 22px;}
 }
+
+/* 구독관리: 구독 상태 / 결제내역 블록 */
+.subsection-wrap{display:flex;flex-direction:column;gap:16px;text-align:left;}
+.sub-block{border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;background:var(--surface);}
+.sub-block-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.sub-block-head h3{margin:0;font-size:15.5px;color:var(--navy);}
+.sub-info{display:grid;grid-template-columns:110px 1fr;gap:8px 12px;margin:0 0 14px;font-size:14px;}
+.sub-info dt{color:var(--ink-faint);}
+.sub-info dd{margin:0;color:var(--ink);font-weight:600;word-break:keep-all;}
+.sub-guide{list-style:disc;margin:0 0 14px;padding:12px 16px 12px 32px;background:var(--paper);border-radius:10px;font-size:13.5px;line-height:1.7;color:var(--ink-dim);}
+.sub-guide li{margin:0;}
+.sub-guide:empty{display:none;}
+.sub-table td.nowrap{white-space:nowrap;}
+.sub-table .muted-note{color:var(--ink-faint);font-size:12px;}
+@media (max-width:480px){.sub-info{grid-template-columns:92px 1fr;}.sub-block{padding:14px;}}

@@ -111,30 +111,32 @@
       </div>
 
       <div class="account-tab-panel" id="tabPanelSubscription">
-        <div class="account-row">
-          <span class="label">구독 상태</span>
-          <span class="status-pill" id="subStatusPill">확인 중...</span>
-        </div>
+        <div class="subsection-wrap" id="subSection">
+          <section class="sub-block">
+            <div class="sub-block-head">
+              <h3>구독 상태</h3>
+              <span class="status-pill" id="subStatusPill">확인 중...</span>
+            </div>
+            <dl class="sub-info" id="subInfo"></dl>
+            <ul class="sub-guide" id="subGuide"><li>구독 정보를 불러오는 중이에요...</li></ul>
+            <div id="subActionArea"></div>
+          </section>
 
-        <div class="subsection" id="subSection">
-          <p class="desc" id="subDesc">구독 정보를 불러오는 중이에요...</p>
-          <p class="desc" id="subCardInfo" style="display:none;"></p>
-          <p class="desc" id="subPeriodInfo" style="display:none;"></p>
-          <div id="subActionArea"></div>
-
-          <div style="margin-top:24px;">
-            <p style="font-size:13.5px;font-weight:600;color:var(--ink-dim);margin:0 0 10px;">결제내역</p>
+          <section class="sub-block">
+            <div class="sub-block-head">
+              <h3>결제내역</h3>
+            </div>
             <div style="overflow-x:auto;">
               <table class="sub-table">
                 <thead>
-                  <tr><th>결제일</th><th>금액</th><th>플랜</th><th>상태</th></tr>
+                  <tr><th>결제일</th><th>구독기간</th><th>금액</th><th>플랜</th><th>상태</th></tr>
                 </thead>
                 <tbody id="paymentHistoryBody">
-                  <tr><td colspan="4" class="empty">불러오는 중...</td></tr>
+                  <tr><td colspan="5" class="empty">불러오는 중...</td></tr>
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </div>
@@ -495,14 +497,6 @@
     return `등록된 카드: ${nameOrBrand ? nameOrBrand + ' ' : ''}${data.card_number}`;
   }
 
-  function describePeriod(data) {
-    if (!data || !data.next_billing_at) return '';
-    const startStr = data.billing_key_issued_at ? fmtDate(data.billing_key_issued_at) : null;
-    const nextStr = fmtDate(data.next_billing_at);
-    const label = (data.auto_renew === false || data.payment_type === 'one_time') ? '이용 만료일' : '다음 결제일';
-    return startStr ? `구독 시작일: ${startStr} · ${label}: ${nextStr}` : `${label}: ${nextStr}`;
-  }
-
   // 서버(worker/src/payments.js computeAnnualRefund)와 같은 규칙.
   //  - before_start: 이용 시작 전 → 전액 / within_7days: 결제 후 7일 이내·유료 기능 미사용 → 전액·즉시 종료
   //  - prorated: 사용 개월(올림, 최소 1개월)만큼 차감, 시작일 + 사용 개월까지 이용 유지
@@ -528,18 +522,81 @@
     return plan === 'annual' ? '연간' : plan === 'monthly' ? '월간' : (plan || '-');
   }
 
+  const tsDate = (ts) => (ts && typeof ts.toDate === 'function' ? ts.toDate() : null);
+  const fmtRange = (a, b) => `${fmtDateLocalAcc(a)} ~ ${fmtDateLocalAcc(b)}`;
+
+  // 구독 상태 블록의 정보 행(플랜 / 결제 방식 / 구독기간 / 남은 기간 / 다음 결제일 / 등록된 카드)
+  function buildSubInfoRows(d, status, plan, isOneTime) {
+    const rows = [];
+    const end = tsDate(d && d.next_billing_at);
+    if (!d || !end || (status !== 'active' && status !== 'canceled')) return rows;
+    const now = new Date();
+    const autoRenew = d.auto_renew !== false && !isOneTime;
+    const issued = tsDate(d.billing_key_issued_at);
+    const annualStart = tsDate(d.annual_starts_at);
+    const lastAnnualStart = tsDate(d.last_one_time_period_start);
+
+    if (status === 'active') {
+      rows.push(['플랜', plan === 'annual' || isOneTime && plan !== 'monthly' ? '연간 이용권' : planLabel(plan)]);
+      rows.push(['결제 방식', autoRenew ? '정기결제 (매달 자동 결제)' : isOneTime && plan !== 'monthly' ? '1회 결제 (자동 갱신 없음)' : '자동결제 종료']);
+    }
+    if (isOneTime && annualStart && annualStart.getTime() > now.getTime() && issued) {
+      // 월간 이용 중 연간을 결제해 둔 상태: 두 구간을 나눠서 보여준다.
+      rows.push(['월간 이용 기간', fmtRange(issued, annualStart)]);
+      rows.push(['연간 이용 기간', fmtRange(annualStart, end)]);
+    } else {
+      const start = isOneTime && plan !== 'monthly' ? (lastAnnualStart || annualStart || issued) : issued;
+      rows.push([status === 'canceled' ? '마지막 이용 기간' : '구독기간', start ? fmtRange(start, end) : `~ ${fmtDateLocalAcc(end)}`]);
+    }
+    if (status === 'active') {
+      const days = Math.ceil((end.getTime() - now.getTime()) / 86400000);
+      if (days > 0) rows.push(['남은 기간', `${days}일`]);
+      if (autoRenew) rows.push(['다음 결제일', fmtDateLocalAcc(end)]);
+      else rows.push(['이용 만료일', fmtDateLocalAcc(end)]);
+      if (!isOneTime) {
+        const card = describeCard(d).replace('등록된 카드: ', '');
+        if (card) rows.push(['등록된 카드', card]);
+      }
+    }
+    return rows;
+  }
+
+  function setSubInfo(rows) {
+    const el = document.getElementById('subInfo');
+    el.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+    el.style.display = rows.length ? '' : 'none';
+  }
+  function setGuide(items) {
+    document.getElementById('subGuide').innerHTML = items.map((t) => `<li>${esc(t)}</li>`).join('');
+  }
+  function appendGuide(text) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    document.getElementById('subGuide').appendChild(li);
+  }
+
+  // 결제내역의 구독기간. 기간이 저장되지 않은 예전 기록은 결제일 기준으로 추정해 "(추정)"으로 표시한다.
+  function historyPeriod(p) {
+    const status = p.status || 'paid';
+    if (status === 'failed' || (status === 'refunded' && !p.period_kept)) return '-';
+    const ps = tsDate(p.period_start);
+    const pe = tsDate(p.period_end);
+    if (ps && pe) return pe.getTime() > ps.getTime() ? fmtRange(ps, pe) : '-';
+    const paid = tsDate(p.paid_at);
+    const months = p.plan === 'annual' ? 12 : p.plan === 'monthly' ? 1 : 0;
+    if (!paid || !months) return '-';
+    const e = new Date(paid.getTime());
+    e.setMonth(e.getMonth() + months);
+    return `${fmtRange(paid, e)} <span class="muted-note">(추정)</span>`;
+  }
+
   async function loadSubscriptionInfo(user) {
     const pill = document.getElementById('subStatusPill');
-    const desc = document.getElementById('subDesc');
-    const cardInfoEl = document.getElementById('subCardInfo');
-    const periodInfoEl = document.getElementById('subPeriodInfo');
     const actionArea = document.getElementById('subActionArea');
     const historyBody = document.getElementById('paymentHistoryBody');
 
     let status = 'none';
     let plan = null;
-    let cardText = '';
-    let periodText = '';
     let subData = null;
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
@@ -547,8 +604,6 @@
         subData = snap.data();
         status = subData.subscription_status || 'none';
         plan = subData.subscription_plan || null;
-        cardText = describeCard(subData);
-        periodText = describePeriod(subData);
       }
     } catch (e) {
       // 못 불러와도 기본값(none)으로 조용히 진행
@@ -556,20 +611,7 @@
 
     const isOneTime = !!(subData && subData.payment_type === 'one_time');
 
-    // 연간 이용권(1회 결제)은 등록된 카드가 없으므로 카드 정보는 보여주지 않는다.
-    if (cardText && status === 'active' && !isOneTime) {
-      cardInfoEl.textContent = cardText;
-      cardInfoEl.style.display = '';
-    } else {
-      cardInfoEl.style.display = 'none';
-    }
-
-    if (periodText && status === 'active') {
-      periodInfoEl.textContent = periodText;
-      periodInfoEl.style.display = '';
-    } else {
-      periodInfoEl.style.display = 'none';
-    }
+    setSubInfo(buildSubInfoRows(subData, status, plan, isOneTime));
 
     if (status === 'active' && isOneTime) {
       // 연간 이용권 -- 자동 갱신/해지/카드 변경이 없는 1회 결제. "해지 예정"이 아니라 이용 기간으로 안내.
@@ -581,22 +623,25 @@
         // 연간 이용권을 취소(부분환불)했고, 사용한 달까지 이용이 유지되는 상태.
         pill.textContent = '취소됨 (이용 종료 예정)';
         pill.className = 'status-pill canceled';
-        desc.textContent = `${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요. 환불은 완료됐고, 그 이후에는 서비스가 종료돼요. 연간 이용권은 자동으로 갱신되지 않아요.`;
+        setGuide([`${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요.`, '환불은 완료됐고, 그 이후에는 서비스가 종료돼요.', '연간 이용권은 자동으로 갱신되지 않아요.']);
       } else if (plan === 'monthly') {
         // 연간 결제를 환불해 월간 이용 기간만 남은 상태 -- 자동결제는 이미 종료됐다.
         pill.textContent = '이용 중 (월간 · 자동결제 종료)';
         pill.className = 'status-pill active';
-        desc.textContent = `${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요. 자동결제는 종료됐고, 그 이후에는 월간 구독을 새로 시작할 수 있어요.`;
+        setGuide([`${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요.`, '월간 자동결제는 이미 종료됐어요.', '이용 기간이 끝난 뒤에는 월간 구독을 새로 시작할 수 있어요.']);
       } else if (startsAt && startsAt.getTime() > Date.now()) {
         // 월간 이용 중 연간을 결제해 둔 상태 -- 월간 만료일까지는 월간, 그 뒤부터 연간.
         pill.textContent = '이용 중 (월간 → 연간 예정)';
         pill.className = 'status-pill active';
-        desc.textContent = `${fmtDate(startsTs)}까지는 월간 이용 기간이고, 그 뒤부터 ${untilStr || ''}까지 연간 이용권이 이어서 적용돼요. 월간 자동결제는 종료됐고, 연간 이용권은 자동으로 갱신되지 않아요.`;
+        setGuide([`${fmtDate(startsTs)}까지는 월간 이용 기간이에요.`, `그 뒤부터 ${untilStr || ''}까지 연간 이용권이 이어서 적용돼요.`, '월간 자동결제는 종료됐고, 연간 이용권은 자동으로 갱신되지 않아요.']);
       } else {
         pill.textContent = '이용 중 (연간 이용권)';
         pill.className = 'status-pill active';
-        desc.textContent = (untilStr ? `${untilStr}까지 이용하실 수 있어요. ` : '') +
-          '연간 이용권은 자동으로 갱신되지 않아요. 만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.';
+        setGuide([
+          ...(untilStr ? [`${untilStr}까지 이용하실 수 있어요.`] : []),
+          '연간 이용권은 자동으로 갱신되지 않아요.',
+          '만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.',
+        ]);
       }
       const expDate = subData.next_billing_at && subData.next_billing_at.toDate ? subData.next_billing_at.toDate() : null;
       const extendFrom = expDate ? new Date(expDate.getFullYear(), expDate.getMonth() - 3, expDate.getDate()) : null;
@@ -612,17 +657,14 @@
         (canExtend ? `<a href="pricing.html" class="btn btn-outline btn-sm">1년 더 연장하기 →</a>` : '') +
         (canRefund ? `<button type="button" class="btn btn-outline btn-sm" id="refundAnnualBtn" style="margin-left:${canExtend ? 8 : 0}px;">연간 이용권 취소(환불)하기</button>` : '');
       if (refundCalc && subData.last_one_time_payment_id) {
-        const hint = document.createElement('p');
-        hint.className = 'muted';
-        hint.style.cssText = 'margin:10px 0 0;font-size:13px;';
-        hint.textContent = refundCalc.mode === 'before_start'
+        const hintText = refundCalc.mode === 'before_start'
           ? '아직 이용 전이라 28,000원 전액 환불할 수 있어요.'
           : refundCalc.mode === 'within_7days'
             ? '결제 후 7일 이내이고 기억숲 앱을 사용하지 않아 28,000원 전액 환불할 수 있어요.'
             : refundCalc.amount > 0
               ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불돼요 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtDateLocalAcc(refundCalc.endsAt)}까지는 계속 이용할 수 있어요.`
               : '사용 개월 수가 많아 환불할 금액이 없어요. 만료일까지 계속 이용하실 수 있어요.';
-        actionArea.appendChild(hint);
+        appendGuide(hintText);
       }
       if (canRefund) {
         document.getElementById('refundAnnualBtn').addEventListener('click', async () => {
@@ -679,7 +721,7 @@
         pill.textContent = '구독 중' + (plan ? ` (${planLabel(plan)})` : '');
         pill.className = 'status-pill active';
         // (예전 "다음 결제일부터 전환 예약"은 폐지 -- 남아 있는 pending_plan 값은 무시한다.)
-        desc.textContent = '현재 유료 구독을 이용 중이에요. 해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.';
+        setGuide(['현재 유료 구독을 이용 중이에요.', '다음 결제일에 자동으로 결제돼요.', '해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.']);
         actionArea.innerHTML = `
           <button type="button" class="btn btn-outline btn-sm" id="changeCardBtn">카드 변경하기</button>
           <button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn" style="margin-left:8px;">구독 해지하기</button>
@@ -735,7 +777,7 @@
         pill.textContent = '해지 예정';
         pill.className = 'status-pill canceled';
         const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : '이용 기간 종료일';
-        desc.textContent = `${untilStr}까지는 계속 이용하실 수 있어요. 그 이후에는 자동으로 결제되지 않아요.`;
+        setGuide([`${untilStr}까지는 계속 이용하실 수 있어요.`, '그 이후에는 자동으로 결제되지 않아요.', "'구독 유지하기'를 누르면 자동 결제가 다시 켜져요."]);
         actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="resumeSubBtn">구독 유지하기</button>`;
         document.getElementById('resumeSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('resumeSubBtn');
@@ -781,18 +823,18 @@
       if (isOneTime) {
         pill.textContent = '이용 기간 종료';
         pill.className = 'status-pill canceled';
-        desc.textContent = '연간 이용권 기간이 끝났어요. 다시 결제하면 계속 이용하실 수 있어요.';
+        setGuide(['연간 이용권 기간이 끝났어요.', '다시 결제하면 계속 이용하실 수 있어요.']);
         actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 결제하기 →</a>`;
       } else {
         pill.textContent = '해지됨';
         pill.className = 'status-pill canceled';
-        desc.textContent = '구독이 해지된 상태예요. 언제든 다시 구독할 수 있어요.';
+        setGuide(['구독이 해지된 상태예요.', '언제든 다시 구독할 수 있어요.']);
         actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 구독하기 →</a>`;
       }
     } else {
       pill.textContent = '구독 중이 아님';
       pill.className = 'status-pill';
-      desc.textContent = '구독하면 사진 5,000개 이상 관리, 인생챕터 외부공유, 폰 자동 동기화를 쓸 수 있어요.';
+      setGuide(['구독하면 아래 기능을 쓸 수 있어요.', '사진 5,000개 이상 관리', '인생챕터 외부공유', '폰 자동 동기화']);
       actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">구독하러 가기 →</a>`;
     }
 
@@ -805,22 +847,23 @@
         return tb - ta;
       });
       if (list.length === 0) {
-        historyBody.innerHTML = `<tr><td colspan="4" class="empty">아직 결제내역이 없어요.</td></tr>`;
+        historyBody.innerHTML = `<tr><td colspan="5" class="empty">아직 결제내역이 없어요.</td></tr>`;
       } else {
         historyBody.innerHTML = list
           .map(
             (p) => `
           <tr>
             <td>${fmtDate(p.paid_at)}</td>
+            <td class="nowrap">${historyPeriod(p)}</td>
             <td>${Number(p.amount || 0).toLocaleString()}원</td>
             <td>${esc(p.plan === 'annual' ? '연간 이용권' : planLabel(p.plan))}</td>
-            <td>${p.status === 'refunded' ? '환불' : p.status === 'failed' ? '실패' : '완료'}</td>
+            <td>${p.status === 'refunded' ? '환불' : p.status === 'partial_refunded' ? '부분환불' : p.status === 'failed' ? '실패' : '완료'}</td>
           </tr>`
           )
           .join('');
       }
     } catch (e) {
-      historyBody.innerHTML = `<tr><td colspan="4" class="empty">결제내역을 불러오지 못했어요.</td></tr>`;
+      historyBody.innerHTML = `<tr><td colspan="5" class="empty">결제내역을 불러오지 못했어요.</td></tr>`;
     }
   }
 
