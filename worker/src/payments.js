@@ -75,6 +75,39 @@ function extractBillingKeyCardInfo(info) {
   return null;
 }
 
+// ---- 이중 청구 방지 ----
+// 청구용 결제번호(paymentId)를 "사용자 + 용도 + 시도"로 고정해서 만든다. 같은 청구를 다시 요청하면(결제는 성공했는데
+// 기록이 실패해 다음 cron이 다시 돌았거나, 응답이 유실됐거나, 버튼을 두 번 눌렀을 때) 포트원이 "이미 결제된 번호"로
+// 거부하므로 카드가 두 번 청구되지 않는다. 그 경우 아래 findAlreadyPaid로 기존 결제를 확인해 기록만 마저 처리한다.
+// (KG이니시스 등은 주문번호 40자 제한이 있어 해시를 28자로 줄여 "sub_" + 28자로 만든다.)
+async function deterministicPaymentId(parts) {
+  const data = new TextEncoder().encode(parts.join("|"));
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `sub_${hex.slice(0, 28)}`;
+}
+
+// 포트원에 이미 "결제 완료(PAID)"로 있는 결제번호인지 확인한다(금액까지 일치해야 함). 아니면 null.
+async function findAlreadyPaid(env, paymentId, amount) {
+  try {
+    const p = await getPayment(env, paymentId);
+    if (p && p.status === "PAID" && (!p.amount || p.amount.total === amount)) return p;
+  } catch (e) {
+    // 조회 실패(없는 결제번호 등)는 "이미 결제된 건 아님"으로 본다.
+  }
+  return null;
+}
+
+// 같은 결제번호의 결제 기록(payments)이 이미 있는지(중복 기록 방지).
+async function paymentRecordExists(env, paymentId) {
+  try {
+    const rows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
+    return rows.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
 function jsonResponse(obj, status = 200) {
   return new Response(JSON.stringify(obj), {
     status,
@@ -135,8 +168,8 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
     return jsonResponse({ error: "missing_customer_info", detail: "이름/휴대폰번호가 필요해요." }, 400);
   }
 
-  // KG이니시스 등 일부 PG는 주문번호(oid) 길이를 40자로 제한하므로 uid를 그대로 넣지 않고 짧게 채번한다.
-  const paymentId = `sub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  // 결제번호는 (사용자, 이번에 발급된 빌링키)로 고정한다 -- 같은 카드 등록으로 두 번 청구되는 것을 막는다(버튼 중복 클릭, 재시도).
+  const paymentId = await deterministicPaymentId(["first", user.uid, billingKey]);
 
   let result;
   try {
@@ -155,6 +188,12 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
     });
   } catch (e) {
     return jsonResponse({ error: "portone_request_failed", detail: String(e.message || e) }, 502);
+  }
+
+  if (!result.ok) {
+    // 이미 결제된 번호라 거부된 것이면(앞선 요청은 결제됐지만 기록이 안 된 경우) 새로 청구하지 않고 그 결제로 이어서 처리한다.
+    const already = await findAlreadyPaid(env, paymentId, planInfo.amount);
+    if (already) result = { ok: true, status: 200, data: already };
   }
 
   if (!result.ok) {
@@ -179,21 +218,24 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
   }
 
   try {
-    await firestoreAddDoc(env, "payments", {
-      uid: user.uid,
-      amount: planInfo.amount,
-      plan,
-      method: "카드",
-      status: "paid",
-      paid_at: now,
-      created_at: now,
-      period_start: periodStart,
-      period_end: nextBillingAt,
-      period_months: planInfo.periodMonths,
-      created_by: "portone",
-      payment_id: paymentId,
-      ...(cardInfo || {}),
-    });
+    if (!(await paymentRecordExists(env, paymentId))) {
+      // 문서 ID를 결제번호로 고정해(upsert) 동시에 두 번 기록돼도 한 건만 남게 한다.
+      await firestorePatchDoc(env, `payments/${paymentId}`, {
+        uid: user.uid,
+        amount: planInfo.amount,
+        plan,
+        method: "카드",
+        status: "paid",
+        paid_at: now,
+        created_at: now,
+        period_start: periodStart,
+        period_end: nextBillingAt,
+        period_months: planInfo.periodMonths,
+        created_by: "portone",
+        payment_id: paymentId,
+        ...(cardInfo || {}),
+      });
+    }
     await firestorePatchDoc(env, `users/${user.uid}`, {
       subscription_status: "active",
       subscription_plan: plan,
@@ -1311,7 +1353,12 @@ export async function runScheduledBilling(env) {
       continue;
     }
 
-    const paymentId = `sub_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    // 이번이 몇 번째 시도인지(첫 시도 = 1). 직전까지 연속 실패한 횟수 + 1.
+    const attemptNo = (Number(userDoc.billing_retry_count) || 0) + 1;
+    // 결제번호는 (사용자, 이번 결제 예정일, 시도 번호)로 고정한다. 결제는 성공했는데 기록이 실패해 다음 cron이 같은 건을 다시
+    // 처리하더라도 같은 번호라 포트원이 거부하고(이중 청구 없음), 아래에서 기존 결제를 확인해 기록만 마저 처리한다.
+    const dueStamp = userDoc.next_billing_at && userDoc.next_billing_at.getTime ? String(userDoc.next_billing_at.getTime()) : "none";
+    const paymentId = await deterministicPaymentId(["cron", uid, dueStamp, String(attemptNo)]);
     let result;
     try {
       result = await payWithBillingKey(env, {
@@ -1332,9 +1379,16 @@ export async function runScheduledBilling(env) {
       continue;
     }
 
+    if (!result.ok) {
+      // 이미 결제된 번호라 거부된 것이면(앞선 실행에서 결제는 됐지만 기록이 안 된 경우) 성공으로 보고 기록만 마저 처리한다.
+      const already = await findAlreadyPaid(env, paymentId, planInfo.amount);
+      if (already) {
+        result = { ok: true, status: 200, data: already };
+        console.log("[정기결제] 이미 결제된 건 확인 → 기록만 보완", uid, paymentId);
+      }
+    }
+
     const chargedAt = new Date();
-    // 이번이 몇 번째 시도인지(첫 시도 = 1). 직전까지 연속 실패한 횟수 + 1.
-    const attemptNo = (Number(userDoc.billing_retry_count) || 0) + 1;
     // 재시도 일정의 기준이 되는 최초 실패 시각(첫 실패면 지금).
     const firstFailureAt = attemptNo > 1 && userDoc.billing_first_failure_at && userDoc.billing_first_failure_at.getTime ? userDoc.billing_first_failure_at : chargedAt;
 
@@ -1358,21 +1412,24 @@ export async function runScheduledBilling(env) {
         console.error("get_payment_for_card_info_failed_cron", uid, e);
       }
       try {
-        await firestoreAddDoc(env, "payments", {
-          uid,
-          amount: planInfo.amount,
-          plan,
-          method: "카드",
-          status: "paid",
-          paid_at: chargedAt,
-          created_at: chargedAt,
-          period_start: periodStart,
-          period_end: nextBillingAt,
-          period_months: planInfo.periodMonths,
-          created_by: "portone-cron",
-          payment_id: paymentId,
-          ...(cardInfo || {}),
-        });
+        if (!(await paymentRecordExists(env, paymentId))) {
+          // 문서 ID를 결제번호로 고정해(upsert) 동시에 두 번 기록돼도 한 건만 남게 한다.
+          await firestorePatchDoc(env, `payments/${paymentId}`, {
+            uid,
+            amount: planInfo.amount,
+            plan,
+            method: "카드",
+            status: "paid",
+            paid_at: chargedAt,
+            created_at: chargedAt,
+            period_start: periodStart,
+            period_end: nextBillingAt,
+            period_months: planInfo.periodMonths,
+            created_by: "portone-cron",
+            payment_id: paymentId,
+            ...(cardInfo || {}),
+          });
+        }
         await firestorePatchDoc(env, `users/${uid}`, {
           subscription_plan: plan,
           pending_plan: null,
@@ -1395,20 +1452,23 @@ export async function runScheduledBilling(env) {
       const delayHours = BILLING_RETRY_DELAYS_HOURS[attemptNo - 1];
       const willRetry = delayHours !== undefined;
       try {
-        await firestoreAddDoc(env, "payments", {
-          uid,
-          amount: planInfo.amount,
-          plan,
-          method: "카드",
-          status: "failed",
-          paid_at: null,
-          created_at: chargedAt,
-          created_by: "portone-cron",
-          payment_id: paymentId,
-          attempt: attemptNo,
-          failure_reason: message,
-          will_retry: willRetry,
-        });
+        if (!(await paymentRecordExists(env, paymentId))) {
+          // 문서 ID를 결제번호로 고정해(upsert) 동시에 두 번 기록돼도 한 건만 남게 한다.
+          await firestorePatchDoc(env, `payments/${paymentId}`, {
+            uid,
+            amount: planInfo.amount,
+            plan,
+            method: "카드",
+            status: "failed",
+            paid_at: null,
+            created_at: chargedAt,
+            created_by: "portone-cron",
+            payment_id: paymentId,
+            attempt: attemptNo,
+            failure_reason: message,
+            will_retry: willRetry,
+          });
+        }
         if (willRetry) {
           // 재시도 예약 -- 구독은 active로 유지하고(이용 유예), 정해진 시간 뒤에 다시 시도한다.
           await firestorePatchDoc(env, `users/${uid}`, {
