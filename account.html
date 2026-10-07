@@ -497,25 +497,57 @@
     return `등록된 카드: ${nameOrBrand ? nameOrBrand + ' ' : ''}${data.card_number}`;
   }
 
+  // ---- 이용 기간 표시/계산: 한국시간(KST) 날짜 단위. 서버(worker/src/ledger.js)와 같은 규칙 ----
+  // 기간은 "시작일 00:00 ~ N개월 뒤 같은 날 00:00(그 시각은 포함하지 않음)"으로 저장되므로
+  // 화면에는 종료 시각보다 하루 앞선 날짜(마지막 이용일)를 보여준다. (예: 10/7 ~ 11/7 00:00 → "10/07 ~ 11/06")
+  var KST_MS = 9 * 3600 * 1000;
+  var DAY_MS = 24 * 3600 * 1000;
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function kstFmt(d) {
+    const k = new Date(d.getTime() + KST_MS);
+    return `${k.getUTCFullYear()}.${pad2(k.getUTCMonth() + 1)}.${pad2(k.getUTCDate())}`;
+  }
+  function fmtLast(d) { return kstFmt(new Date(d.getTime() - DAY_MS)); }
+  function kstDayStart(d) {
+    return new Date(Math.floor((d.getTime() + KST_MS) / DAY_MS) * DAY_MS - KST_MS);
+  }
+  function kstDayCeil(d) {
+    const s = kstDayStart(d);
+    return s.getTime() === d.getTime() ? d : new Date(s.getTime() + DAY_MS);
+  }
+  function kstMonthDiff(a, b) {
+    const x = new Date(a.getTime() + KST_MS);
+    const y = new Date(b.getTime() + KST_MS);
+    return (y.getUTCFullYear() - x.getUTCFullYear()) * 12 + (y.getUTCMonth() - x.getUTCMonth());
+  }
+  function addMonthsKst(date, months, anchorDay) {
+    const k = new Date(date.getTime() + KST_MS);
+    const total = k.getUTCFullYear() * 12 + k.getUTCMonth() + months;
+    const y = Math.floor(total / 12);
+    const m = ((total % 12) + 12) % 12;
+    const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const day = Math.min(anchorDay || k.getUTCDate(), dim);
+    return new Date(Date.UTC(y, m, day, k.getUTCHours(), k.getUTCMinutes(), k.getUTCSeconds(), k.getUTCMilliseconds()) - KST_MS);
+  }
+
   // 서버(worker/src/payments.js computeAnnualRefund)와 같은 규칙.
   //  - before_start: 이용 시작 전 → 전액 / within_7days: 결제 후 7일 이내·유료 기능 미사용 → 전액·즉시 종료
   //  - prorated: 사용 개월(올림, 최소 1개월)만큼 차감, 시작일 + 사용 개월까지 이용 유지
   function computeAnnualRefundClient(periodStart, now, paidAt, featureUsed) {
     const price = 28000;
-    const addM = (d, n) => { const x = new Date(d.getTime()); x.setMonth(x.getMonth() + n); return x; };
     if (now.getTime() <= periodStart.getTime()) return { mode: 'before_start', started: false, usedMonths: 0, amount: price, endsAt: null };
     if (paidAt && now.getTime() - paidAt.getTime() <= 7 * 24 * 3600 * 1000 && !featureUsed) {
       return { mode: 'within_7days', started: true, usedMonths: 0, amount: price, endsAt: null };
     }
-    let m = (now.getFullYear() - periodStart.getFullYear()) * 12 + (now.getMonth() - periodStart.getMonth());
-    let anchor = addM(periodStart, m);
-    if (anchor.getTime() > now.getTime()) { m -= 1; anchor = addM(periodStart, m); }
+    let m = kstMonthDiff(periodStart, now);
+    let anchor = addMonthsKst(periodStart, m);
+    if (anchor.getTime() > now.getTime()) { m -= 1; anchor = addMonthsKst(periodStart, m); }
     const used = Math.max(1, anchor.getTime() === now.getTime() ? m : m + 1);
-    return { mode: 'prorated', started: true, usedMonths: used, amount: Math.max(0, price - used * 3000), endsAt: addM(periodStart, used) };
+    return { mode: 'prorated', started: true, usedMonths: used, amount: Math.max(0, price - used * 3000), endsAt: addMonthsKst(periodStart, used) };
   }
 
   function fmtDateLocalAcc(d) {
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    return kstFmt(d);
   }
 
   function planLabel(plan) {
@@ -523,7 +555,8 @@
   }
 
   const tsDate = (ts) => (ts && typeof ts.toDate === 'function' ? ts.toDate() : null);
-  const fmtRange = (a, b) => `${fmtDateLocalAcc(a)} ~ ${fmtDateLocalAcc(b)}`;
+  function fmtRange(a, b) { return `${kstFmt(a)} ~ ${fmtLast(b)}`; }
+  function untilOf(ts) { return ts && typeof ts.toDate === 'function' ? fmtLast(ts.toDate()) : null; }
 
   // 구독 상태 블록의 정보 행(플랜 / 결제 방식 / 구독기간 / 남은 기간 / 다음 결제일 / 등록된 카드)
   function buildSubInfoRows(d, status, plan, isOneTime) {
@@ -546,13 +579,13 @@
       rows.push(['연간 이용 기간', fmtRange(annualStart, end)]);
     } else {
       const start = isOneTime && plan !== 'monthly' ? (lastAnnualStart || annualStart || issued) : issued;
-      rows.push([status === 'canceled' ? '마지막 이용 기간' : '구독기간', start ? fmtRange(start, end) : `~ ${fmtDateLocalAcc(end)}`]);
+      rows.push([status === 'canceled' ? '마지막 이용 기간' : '구독기간', start ? fmtRange(start, end) : `~ ${fmtLast(end)}`]);
     }
     if (status === 'active') {
       const days = Math.ceil((end.getTime() - now.getTime()) / 86400000);
       if (days > 0) rows.push(['남은 기간', `${days}일`]);
-      if (autoRenew) rows.push(['다음 결제일', fmtDateLocalAcc(end)]);
-      else rows.push(['이용 만료일', fmtDateLocalAcc(end)]);
+      if (autoRenew) rows.push(['다음 결제일', kstFmt(end)]);
+      else rows.push(['이용 만료일', fmtLast(end)]);
       if (!isOneTime) {
         const card = describeCard(d).replace('등록된 카드: ', '');
         if (card) rows.push(['등록된 카드', card]);
@@ -585,8 +618,7 @@
     const paid = tsDate(p.paid_at);
     const months = p.plan === 'annual' ? 12 : p.plan === 'monthly' ? 1 : 0;
     if (!paid || !months) return '-';
-    const e = new Date(paid.getTime());
-    e.setMonth(e.getMonth() + months);
+    const e = addMonthsKst(paid, months);
     return `${fmtRange(paid, e)} <span class="muted-note">(추정)</span>`;
   }
 
@@ -615,7 +647,7 @@
 
     if (status === 'active' && isOneTime) {
       // 연간 이용권 -- 자동 갱신/해지/카드 변경이 없는 1회 결제. "해지 예정"이 아니라 이용 기간으로 안내.
-      const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
+      const untilStr = untilOf(subData.next_billing_at);
       const startsTs = subData.annual_starts_at;
       const startsAt = startsTs && startsTs.toDate ? startsTs.toDate() : null;
       const cancelReqTs = subData.annual_cancel_requested_at;
@@ -633,7 +665,7 @@
         // 월간 이용 중 연간을 결제해 둔 상태 -- 월간 만료일까지는 월간, 그 뒤부터 연간.
         pill.textContent = '이용 중 (월간 → 연간 예정)';
         pill.className = 'status-pill active';
-        setGuide([`${fmtDate(startsTs)}까지는 월간 이용 기간이에요.`, `그 뒤부터 ${untilStr || ''}까지 연간 이용권이 이어서 적용돼요.`, '월간 자동결제는 종료됐고, 연간 이용권은 자동으로 갱신되지 않아요.']);
+        setGuide([`${untilOf(startsTs)}까지는 월간 이용 기간이에요.`, `그 뒤부터 ${untilStr || ''}까지 연간 이용권이 이어서 적용돼요.`, '월간 자동결제는 종료됐고, 연간 이용권은 자동으로 갱신되지 않아요.']);
       } else {
         pill.textContent = '이용 중 (연간 이용권)';
         pill.className = 'status-pill active';
@@ -662,7 +694,7 @@
           : refundCalc.mode === 'within_7days'
             ? '결제 후 7일 이내이고 기억숲 앱을 사용하지 않아 28,000원 전액 환불할 수 있어요.'
             : refundCalc.amount > 0
-              ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불돼요 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtDateLocalAcc(refundCalc.endsAt)}까지는 계속 이용할 수 있어요.`
+              ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불돼요 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtLast(refundCalc.endsAt)}까지는 계속 이용할 수 있어요.`
               : '사용 개월 수가 많아 환불할 금액이 없어요. 만료일까지 계속 이용하실 수 있어요.';
         appendGuide(hintText);
       }
@@ -670,7 +702,7 @@
         document.getElementById('refundAnnualBtn').addEventListener('click', async () => {
           const btn = document.getElementById('refundAnnualBtn');
           const msg = refundCalc.mode === 'prorated'
-            ? `${refundCalc.amount.toLocaleString()}원이 카드로 환불돼요(28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtDateLocalAcc(refundCalc.endsAt)}까지는 계속 이용할 수 있고, 그 이후 연간 이용권이 종료돼요. 취소하시겠어요?`
+            ? `${refundCalc.amount.toLocaleString()}원이 카드로 환불돼요(28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtLast(refundCalc.endsAt)}까지는 계속 이용할 수 있고, 그 이후 연간 이용권이 종료돼요. 취소하시겠어요?`
             : refundCalc.mode === 'within_7days'
               ? '28,000원이 카드로 전액 환불되고, 연간 이용권은 바로 종료돼요. 취소하시겠어요?'
               : '28,000원이 카드로 전액 환불돼요. 이번 연간 결제로 늘어난 이용 기간은 사라지고, 월간 이용 중이었다면 원래 월간 만료일까지만 이용할 수 있어요(월간 자동결제는 다시 시작되지 않아요). 취소하시겠어요?';
@@ -731,7 +763,7 @@
         });
         document.getElementById('cancelSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('cancelSubBtn');
-          const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : null;
+          const untilStr = untilOf(subData.next_billing_at);
           const confirmed = await showConfirm(
             (untilStr ? `해지해도 ${untilStr}까지는 계속 이용하실 수 있어요.\n` : '') +
               '그 이후부터는 자동으로 결제되지 않아요. 정말 해지하시겠어요?',
@@ -776,7 +808,7 @@
       } else {
         pill.textContent = '해지 예정';
         pill.className = 'status-pill canceled';
-        const untilStr = subData.next_billing_at ? fmtDate(subData.next_billing_at) : '이용 기간 종료일';
+        const untilStr = untilOf(subData.next_billing_at) || '이용 기간 종료일';
         setGuide([`${untilStr}까지는 계속 이용하실 수 있어요.`, '그 이후에는 자동으로 결제되지 않아요.', "'구독 유지하기'를 누르면 자동 결제가 다시 켜져요."]);
         actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="resumeSubBtn">구독 유지하기</button>`;
         document.getElementById('resumeSubBtn').addEventListener('click', async () => {

@@ -21,7 +21,7 @@ import {
   firestoreQueryDueCancellation,
   firestoreDeleteDoc,
 } from "./firestore.js";
-import { PLAN_MONTHS, stackStart, toLedgerEntry, revokePeriod, summarizeLedger } from "./ledger.js";
+import { PLAN_MONTHS, addMonths, kstDay, kstDayStart, kstMonthDiff, stackStart, toLedgerEntry, revokePeriod, summarizeLedger } from "./ledger.js";
 
 // oneTime: true 이면 빌링키 자동결제가 아니라 단건 결제(requestPayment)로만 구매하는 플랜.
 // 연간은 PG(KG이니시스)에서 연 단위 정기결제를 허용하지 않아 단건 결제로 받는다.
@@ -53,12 +53,6 @@ function extractCardInfo(payment) {
     console.error("extract_card_info_failed", e);
   }
   return null;
-}
-
-function addMonths(date, months) {
-  const d = new Date(date.getTime());
-  d.setMonth(d.getMonth() + months);
-  return d;
 }
 
 function jsonResponse(obj, status = 200) {
@@ -150,7 +144,9 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
   }
 
   const now = new Date();
-  const nextBillingAt = addMonths(now, planInfo.periodMonths);
+  // 이용 기간은 한국시간 날짜 단위: 결제한 날 00:00 ~ N개월 뒤 같은 날 00:00 (다음 정기결제도 그 시각).
+  const periodStart = kstDayStart(now);
+  const nextBillingAt = addMonths(periodStart, planInfo.periodMonths);
 
   // 등록된 카드 정보(마스킹된 카드번호, 브랜드 등)를 조회해 사용자 화면/어드민 화면에
   // 노출할 수 있게 저장해둔다. 조회에 실패해도 결제 자체는 이미 끝났으니 계속 진행.
@@ -171,7 +167,7 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
       status: "paid",
       paid_at: now,
       created_at: now,
-      period_start: now,
+      period_start: periodStart,
       period_end: nextBillingAt,
       period_months: planInfo.periodMonths,
       created_by: "portone",
@@ -273,7 +269,7 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
       const prevStart = userDoc.annual_starts_at;
       annualStartsAt = prevStart && prevStart.getTime() > now.getTime() ? prevStart : null;
     } else if (userDoc.next_billing_at.getTime() > now.getTime()) {
-      annualStartsAt = userDoc.next_billing_at;
+      annualStartsAt = base;
     }
   }
 
@@ -376,7 +372,7 @@ const FULL_REFUND_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 // 시작일부터 now까지 경과한 개월 수(올림). now가 시작일 이전이거나 같으면 0.
 function usedMonthsCeil(start, now) {
   if (now.getTime() <= start.getTime()) return 0;
-  let m = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  let m = kstMonthDiff(start, now);
   let anchor = addMonths(start, m);
   if (anchor.getTime() > now.getTime()) {
     m -= 1;
@@ -1278,7 +1274,17 @@ export async function runScheduledBilling(env) {
     const chargedAt = new Date();
 
     if (result.ok) {
-      const nextBillingAt = addMonths(chargedAt, planInfo.periodMonths);
+      // 새 이용 기간은 "이전 기간의 종료 시각(= 예정된 결제일 00:00)"에서 이어 붙인다(배치가 늦게 돌아도 결제일이 밀리지 않게).
+      // 월말 결제일(31일 등)은 최초 결제일의 "일"을 기준으로 계산해 말일 때문에 앞당겨지지 않게 한다.
+      const anchorDay = userDoc.billing_key_issued_at && userDoc.billing_key_issued_at.getTime ? kstDay(userDoc.billing_key_issued_at) : undefined;
+      const scheduled = userDoc.next_billing_at && userDoc.next_billing_at.getTime ? kstDayStart(userDoc.next_billing_at) : null;
+      let periodStart = scheduled && scheduled.getTime() <= chargedAt.getTime() ? scheduled : kstDayStart(chargedAt);
+      let nextBillingAt = addMonths(periodStart, planInfo.periodMonths, anchorDay);
+      if (nextBillingAt.getTime() <= chargedAt.getTime()) {
+        // 배치가 오래 멈췄다가 돌아온 경우: 밀린 기간을 한꺼번에 재청구하지 않도록 오늘부터 새로 시작한다.
+        periodStart = kstDayStart(chargedAt);
+        nextBillingAt = addMonths(periodStart, planInfo.periodMonths, anchorDay);
+      }
       let cardInfo = null;
       try {
         const paymentDetail = await getPayment(env, paymentId);
@@ -1295,7 +1301,7 @@ export async function runScheduledBilling(env) {
           status: "paid",
           paid_at: chargedAt,
           created_at: chargedAt,
-          period_start: chargedAt,
+          period_start: periodStart,
           period_end: nextBillingAt,
           period_months: planInfo.periodMonths,
           created_by: "portone-cron",

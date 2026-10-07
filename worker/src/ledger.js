@@ -7,19 +7,57 @@
 
 export const PLAN_MONTHS = { monthly: 1, annual: 12 };
 
-export function addMonths(date, months) {
-  const d = new Date(date.getTime());
-  d.setMonth(d.getMonth() + months);
-  return d;
+// ---- 한국시간(KST) 기준 날짜 계산 ----
+// 이용 기간은 "한국시간 날짜 단위"로 다룬다: 시작 = 결제한 날 00:00, 종료 = 그 N개월 뒤 같은 날 00:00(그 시각은 포함하지 않음).
+// 예) 10/7 15:00 월간 결제 -> 10/7 00:00 ~ 11/7 00:00 (화면에는 "10/7 ~ 11/6"), 다음 정기결제는 11/7 00:00.
+// Worker는 UTC로 돌아가므로 월/일 계산은 모두 +9시간으로 옮겨서 UTC getter로 한다.
+export const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// 해당 시각이 속한 한국시간 날짜의 00:00
+export function kstDayStart(date) {
+  return new Date(Math.floor((date.getTime() + KST_OFFSET_MS) / DAY_MS) * DAY_MS - KST_OFFSET_MS);
+}
+
+// 한국시간 00:00이면 그대로, 아니면 다음 날 00:00
+export function kstDayCeil(date) {
+  const s = kstDayStart(date);
+  return s.getTime() === date.getTime() ? date : new Date(s.getTime() + DAY_MS);
+}
+
+// 한국시간 기준 "일"(1~31)
+export function kstDay(date) {
+  return new Date(date.getTime() + KST_OFFSET_MS).getUTCDate();
+}
+
+// 한국시간 기준 달력 개월 차이(b - a)
+export function kstMonthDiff(a, b) {
+  const x = new Date(a.getTime() + KST_OFFSET_MS);
+  const y = new Date(b.getTime() + KST_OFFSET_MS);
+  return (y.getUTCFullYear() - x.getUTCFullYear()) * 12 + (y.getUTCMonth() - x.getUTCMonth());
+}
+
+// 한국시간 기준으로 N개월 뒤(시각은 유지). 대상 달에 그 날짜가 없으면 말일로 맞춘다(1/31 + 1개월 = 2/28).
+// anchorDay를 주면 그 "일"을 기준으로 계산해 말일 때문에 결제일이 앞으로 밀리지 않는다(1/31 -> 2/28 -> 3/31).
+export function addMonths(date, months, anchorDay) {
+  const k = new Date(date.getTime() + KST_OFFSET_MS);
+  const total = k.getUTCFullYear() * 12 + k.getUTCMonth() + months;
+  const y = Math.floor(total / 12);
+  const m = ((total % 12) + 12) % 12;
+  const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const day = Math.min(anchorDay || k.getUTCDate(), dim);
+  const t = Date.UTC(y, m, day, k.getUTCHours(), k.getUTCMinutes(), k.getUTCSeconds(), k.getUTCMilliseconds());
+  return new Date(t - KST_OFFSET_MS);
 }
 
 const asDate = (v) => (v && typeof v.getTime === "function" ? v : null);
 
-// 새 결제가 시작되는 시각. 이미 이용 중이면 현재 만료일 뒤, 아니면 지금.
+// 새 결제가 시작되는 시각(한국시간 날짜 00:00). 이미 이용 중이면 현재 만료일 뒤(예전 기록처럼 00:00이
+// 아니면 다음 날 00:00으로 올림), 아니면 오늘 00:00.
 export function stackStart(userDoc, now) {
   const exp = userDoc && asDate(userDoc.next_billing_at);
   const wasActive = !!(userDoc && userDoc.subscription_status === "active" && exp);
-  const base = wasActive && exp.getTime() > now.getTime() ? exp : now;
+  const base = wasActive && exp.getTime() > now.getTime() ? kstDayCeil(exp) : kstDayStart(now);
   return { base, wasActive };
 }
 

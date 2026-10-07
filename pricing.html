@@ -230,8 +230,8 @@
         { k: '플랜', v: '연간 이용권' },
         { k: '결제 금액', v: info.amount.toLocaleString() + '원' },
         { k: '결제 방식', v: '1회 결제 (자동 갱신 없음)' },
-        ...(monthlyActiveUntil() ? [{ k: '월간 이용', v: '~ ' + fmtDateLocal(monthlyActiveUntil()) + ' (남은 기간 그대로)' }] : []),
-        { k: monthlyActiveUntil() ? '연간 이용 (월간 이후)' : '이용 기간', v: '~ ' + fmtDateLocal(annualExpiryPreview()), strong: true },
+        ...(monthlyActiveUntil() ? [{ k: '월간 이용', v: '~ ' + fmtLast(monthlyActiveUntil()) + ' (남은 기간 그대로)' }] : []),
+        { k: monthlyActiveUntil() ? '연간 이용 (월간 이후)' : '이용 기간', v: '~ ' + fmtLast(annualExpiryPreview()), strong: true },
       ];
     }
     return [
@@ -244,12 +244,13 @@
   // 연간 이용권 결제 시 예상 만료일 -- 이용 중이면 남은 기간 뒤에 12개월을 이어 붙인다.
   // (실제 만료일은 서버가 확정한다.)
   function annualExpiryPreview() {
-    let base = new Date();
+    // 서버와 같은 규칙: 이용 중이면 현재 만료 시각(00:00이 아니면 다음 날 00:00) 뒤, 아니면 오늘 00:00부터 12개월.
+    let base = kstDayStart(new Date());
     if (currentSub && currentSub.subscription_status === 'active' && currentSub.next_billing_at && currentSub.next_billing_at.toDate) {
       const cur = currentSub.next_billing_at.toDate();
-      if (cur.getTime() > base.getTime()) base = cur;
+      if (cur.getTime() > Date.now()) base = kstDayCeil(cur);
     }
-    return addMonthsLocal(base, 12);
+    return addMonthsKst(base, 12);
   }
 
   // 연간 이용권은 만료 3개월 전부터만 연장(재결제)할 수 있다 -- 한 번에 여러 해를 미리 결제하는 일을 막는다.
@@ -288,8 +289,41 @@
     d.setMonth(d.getMonth() + months);
     return d;
   }
+  // ---- 이용 기간 표시/계산: 한국시간(KST) 날짜 단위. 서버(worker/src/ledger.js)와 같은 규칙 ----
+  // 기간은 "시작일 00:00 ~ N개월 뒤 같은 날 00:00(그 시각은 포함하지 않음)"으로 저장되므로
+  // 화면에는 종료 시각보다 하루 앞선 날짜(마지막 이용일)를 보여준다. (예: 10/7 ~ 11/7 00:00 → "10/07 ~ 11/06")
+  var KST_MS = 9 * 3600 * 1000;
+  var DAY_MS = 24 * 3600 * 1000;
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function kstFmt(d) {
+    const k = new Date(d.getTime() + KST_MS);
+    return `${k.getUTCFullYear()}.${pad2(k.getUTCMonth() + 1)}.${pad2(k.getUTCDate())}`;
+  }
+  function fmtLast(d) { return kstFmt(new Date(d.getTime() - DAY_MS)); }
+  function kstDayStart(d) {
+    return new Date(Math.floor((d.getTime() + KST_MS) / DAY_MS) * DAY_MS - KST_MS);
+  }
+  function kstDayCeil(d) {
+    const s = kstDayStart(d);
+    return s.getTime() === d.getTime() ? d : new Date(s.getTime() + DAY_MS);
+  }
+  function kstMonthDiff(a, b) {
+    const x = new Date(a.getTime() + KST_MS);
+    const y = new Date(b.getTime() + KST_MS);
+    return (y.getUTCFullYear() - x.getUTCFullYear()) * 12 + (y.getUTCMonth() - x.getUTCMonth());
+  }
+  function addMonthsKst(date, months, anchorDay) {
+    const k = new Date(date.getTime() + KST_MS);
+    const total = k.getUTCFullYear() * 12 + k.getUTCMonth() + months;
+    const y = Math.floor(total / 12);
+    const m = ((total % 12) + 12) % 12;
+    const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const day = Math.min(anchorDay || k.getUTCDate(), dim);
+    return new Date(Date.UTC(y, m, day, k.getUTCHours(), k.getUTCMinutes(), k.getUTCSeconds(), k.getUTCMilliseconds()) - KST_MS);
+  }
+
   function fmtDateLocal(d) {
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    return kstFmt(d);
   }
 
   // 포트원(PortOne) V2 빌링키(정기결제용 카드 등록) 발급.
@@ -453,7 +487,7 @@
             btn.textContent = '연간 이용권 다시 결제하기 (28,000원)';
           } else {
             const exp = annualExpiryDate();
-            muted('연간 이용권 이용 중 · 월간은 선택할 수 없어요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+            muted('연간 이용권 이용 중 · 월간은 선택할 수 없어요' + (exp ? ' (' + fmtLast(exp) + '까지)' : ''));
           }
           return;
         }
@@ -461,7 +495,7 @@
           // 연간 결제를 환불해 월간 이용 기간만 남은 상태(자동결제 종료).
           if (plan === 'monthly') {
             const exp = annualExpiryDate();
-            muted('월간 이용 중이에요' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+            muted('월간 이용 중이에요' + (exp ? ' (' + fmtLast(exp) + '까지)' : ''));
           } else {
             btn.textContent = '연간 이용권으로 바꾸기 (28,000원)';
           }
@@ -471,11 +505,11 @@
         if (startsAt) {
           // 월간 이용 중 연간을 결제해 둔 상태 -- 월간 만료일까지는 월간, 그 뒤부터 연간.
           if (plan === 'monthly') {
-            muted('월간 이용 중이에요 (' + fmtDateLocal(startsAt) + '까지)');
+            muted('월간 이용 중이에요 (' + fmtLast(startsAt) + '까지)');
           } else if (canExtendAnnual()) {
             btn.textContent = '1년 더 연장하기 (28,000원)';
           } else {
-            muted('연간 결제 완료 (' + fmtDateLocal(startsAt) + ' 이후 시작)');
+            muted('연간 결제 완료 (' + kstFmt(startsAt) + '부터 시작)');
           }
           return;
         }
@@ -484,7 +518,7 @@
             btn.textContent = '1년 더 연장하기 (28,000원)';
           } else {
             const exp = annualExpiryDate();
-            muted('연간 이용권 이용 중' + (exp ? ' (' + fmtDateLocal(exp) + '까지)' : ''));
+            muted('연간 이용권 이용 중' + (exp ? ' (' + fmtLast(exp) + '까지)' : ''));
           }
         } else {
           muted('연간 이용 중에는 월간을 선택할 수 없어요');
@@ -587,7 +621,7 @@
       if (subscribeData.warning) {
         await showAlert(subscribeData.warning, { icon: { type: 'success', glyph: '✓' } });
       } else {
-        const nextBillingStr = fmtDateLocal(addMonthsLocal(new Date(), PLAN_DISPLAY[plan].months));
+        const nextBillingStr = kstFmt(addMonthsKst(kstDayStart(new Date()), PLAN_DISPLAY[plan].months));
         await showReceipt('구독 결제가 완료됐어요.', [
           { k: '플랜', v: PLAN_DISPLAY[plan].korean },
           { k: '결제 금액', v: PLAN_DISPLAY[plan].amount.toLocaleString() + '원' },
@@ -737,8 +771,8 @@
     await showReceipt('연간 이용권 결제가 완료됐어요.', [
       { k: '플랜', v: '연간 이용권' },
       { k: '결제 금액', v: PLAN_DISPLAY.annual.amount.toLocaleString() + '원' },
-      ...(monthlyUntil ? [{ k: '월간 이용', v: '~ ' + fmtDateLocal(monthlyUntil) + ' (자동결제는 종료)' }] : []),
-      { k: monthlyUntil ? '연간 이용 (월간 이후)' : '이용 기간', v: '~ ' + fmtDateLocal(expiry), strong: true },
+      ...(monthlyUntil ? [{ k: '월간 이용', v: '~ ' + fmtLast(monthlyUntil) + ' (자동결제는 종료)' }] : []),
+      { k: monthlyUntil ? '연간 이용 (월간 이후)' : '이용 기간', v: '~ ' + fmtLast(expiry), strong: true },
     ], { title: '결제 완료' });
     window.location.reload();
   }
