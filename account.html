@@ -86,6 +86,10 @@
           <span class="label">이메일</span>
           <span class="value" id="userEmail">-</span>
         </div>
+        <div class="account-row">
+          <span class="label">가입일</span>
+          <span class="value" id="userJoined">-</span>
+        </div>
 
         <div class="subsection">
           <h3>비밀번호</h3>
@@ -105,7 +109,7 @@
               <label for="newPw2">새 비밀번호 확인</label>
               <input type="password" id="newPw2" autocomplete="new-password" minlength="6" required>
             </div>
-            <button type="submit" class="btn btn-outline btn-block" id="pwSubmitBtn">비밀번호 변경</button>
+            <div style="text-align:center;margin-top:4px;"><button type="submit" class="btn btn-outline" id="pwSubmitBtn">비밀번호 변경</button></div>
           </form>
         </div>
       </div>
@@ -263,6 +267,14 @@
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       document.getElementById('userEmail').textContent = user.email;
+      // 가입일 -- Firebase 계정 생성 시각을 한국시간 날짜로 표시
+      try {
+        const ct = user.metadata && user.metadata.creationTime ? new Date(user.metadata.creationTime) : null;
+        if (ct && !isNaN(ct.getTime())) {
+          const k = new Date(ct.getTime() + 9 * 3600 * 1000);
+          document.getElementById('userJoined').textContent = `${k.getUTCFullYear()}.${String(k.getUTCMonth() + 1).padStart(2, '0')}.${String(k.getUTCDate()).padStart(2, '0')}`;
+        }
+      } catch (e) { /* 표시 실패는 무시 */ }
 
       // 이메일 인증을 마치지 않은 계정은, PC 앱 연동 요청이더라도 먼저 인증부터 하도록 막는다.
       if (!user.emailVerified) {
