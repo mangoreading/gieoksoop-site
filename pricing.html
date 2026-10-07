@@ -52,93 +52,140 @@
 
 <div class="page-head">
   <h1>사진 정리는 무료로, 더 넓게 쓰고 싶다면 구독으로</h1>
-  <p>핵심 기능은 계속 무료로 제공하고, 사진이 많거나 폰과의 자동 동기화가 필요하시면 구독결제로 확장할 수 있어요.</p>
+  <p>핵심 기능은 계속 무료로 제공해요. 사진이 많거나 인생챕터를 더 만들고 싶을 때 구독으로 확장하세요.</p>
 </div>
 
 <section>
   <div class="wrap">
-    <div class="pricing-cards">
-      <div class="price-card">
+
+    <!-- 결제 주기 토글 -->
+    <div class="billing-toggle" role="tablist" aria-label="결제 주기">
+      <button type="button" class="bt-opt active" role="tab" aria-selected="true" data-period="monthly" id="periodMonthly">월간</button>
+      <button type="button" class="bt-opt" role="tab" aria-selected="false" data-period="annual" id="periodAnnual">연간 <span class="bt-save">8,000원 절약</span></button>
+    </div>
+
+    <div class="plan-grid" data-period="monthly" id="planGrid">
+      <!-- 무료 -->
+      <div class="plan-card">
         <div class="plan-name">무료</div>
-        <div class="plan-price">₩0</div>
-        <div class="plan-price-sub">기억숲 로컬 앱, 계속 무료</div>
-        <a href="signup.html" class="btn btn-outline">무료로 시작하기</a>
+        <div class="plan-price"><span class="amt">₩0</span></div>
+        <div class="plan-price-sub">기억숲 로컬 앱 · 계속 무료</div>
+        <a href="signup.html" class="btn btn-outline" id="freeStartBtn">무료로 시작하기</a>
+        <ul class="plan-feats">
+          <li>사진·영상 폴더 연결 (원본은 내 컴퓨터 밖으로 나가지 않아요)</li>
+          <li>시간·장소 기반 자동 이벤트 정리, 인물 인식·인물별 타임라인</li>
+          <li>인생챕터 <b>30개까지</b> 만들기 (만든 챕터는 언제든 열람)</li>
+          <li>관리 사진·영상 <b>5,000개까지</b></li>
+          <li>폰 사진 QR 업로드, 파일 내보내기·가져오기</li>
+        </ul>
       </div>
-      <div class="price-card price-card-accent">
-        <div class="plan-name">유료 · 월간</div>
-        <div class="plan-price">월 3,000원</div>
-        <div class="plan-price-sub">매달 자동으로 결제돼요</div>
-        <button type="button" class="btn btn-accent subscribe-btn" data-plan="monthly">월 3,000원 구독하기</button>
-      </div>
-      <div class="price-card price-card-accent">
-        <div class="plan-badge">8,000원 절약</div>
-        <div class="plan-name">유료 · 연간</div>
-        <div class="plan-price">연 28,000원</div>
-        <div class="plan-price-sub">월 약 2,333원 꼴 · 1년 이용권 (자동 갱신 없음)</div>
-        <button type="button" class="btn btn-accent subscribe-btn" data-plan="annual">연 28,000원 결제하기</button>
+
+      <!-- 구독(유료) -->
+      <div class="plan-card plan-card-accent">
+        <div class="plan-badge" id="planBadge">추천</div>
+        <div class="plan-name">구독</div>
+
+        <div class="plan-price" data-for="monthly"><span class="amt">3,000원</span><span class="per"> / 월</span></div>
+        <div class="plan-price-sub" data-for="monthly">매달 자동 결제 · 언제든 해지</div>
+        <div class="plan-price" data-for="annual"><span class="amt">28,000원</span><span class="per"> / 년</span></div>
+        <div class="plan-price-sub" data-for="annual">월 약 2,333원 꼴 · 월간 대비 8,000원 절약 · 자동 갱신 없음</div>
+
+        <button type="button" class="btn btn-accent subscribe-btn" data-plan="monthly" data-for="monthly">월 3,000원 구독하기</button>
+        <button type="button" class="btn btn-accent subscribe-btn" data-plan="annual" data-for="annual">연 28,000원 결제하기</button>
+
+        <div class="plan-feats-head">무료 기능 전부 + 아래 기능</div>
+        <ul class="plan-feats">
+          <li>관리 사진·영상 <b>5,000개 초과</b>도 가능</li>
+          <li>인생챕터 <b>31개째 이후</b>도 계속 만들기</li>
+          <li>인생챕터 <b>외부 공유</b> (링크로 가족·친구에게)</li>
+          <li>폰 앱 <b>자동 동기화</b> <span class="soon">준비 중</span></li>
+        </ul>
       </div>
     </div>
 
+    <!-- 기능 비교 -->
+    <h2 class="pricing-h2">무료와 구독, 이렇게 달라요</h2>
     <div class="pricing-table-wrap">
       <table class="pricing-table">
         <thead>
-          <tr>
-            <th></th>
-            <th>무료</th>
-            <th>유료</th>
-          </tr>
+          <tr><th></th><th>무료</th><th>구독</th></tr>
         </thead>
         <tbody>
           <tr>
-            <td>사진·영상 폴더 연결<span class="td-sub">원본은 컴퓨터 밖으로 안 나감</span></td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
-          </tr>
-          <tr>
-            <td>사진·동영상 관리 개수</td>
-            <td>5,000개까지</td>
-            <td>5,000개 이상</td>
+            <td>사진·영상 폴더 연결<span class="td-sub">원본은 컴퓨터 밖으로 나가지 않아요</span></td>
+            <td class="yes">✓</td><td class="yes">✓</td>
           </tr>
           <tr>
             <td>시간·장소 기반 자동 이벤트 정리</td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
+            <td class="yes">✓</td><td class="yes">✓</td>
           </tr>
           <tr>
-            <td>인물 인식 및 인물별 타임라인</td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
-          </tr>
-          <tr>
-            <td>인생 챕터 초안 자동 생성</td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
+            <td>인물 인식 · 인물별 타임라인</td>
+            <td class="yes">✓</td><td class="yes">✓</td>
           </tr>
           <tr>
             <td>즐겨찾기 · 검색 · 타임라인 보기</td>
-            <td class="yes">✓</td>
-            <td class="yes">✓</td>
+            <td class="yes">✓</td><td class="yes">✓</td>
           </tr>
           <tr>
-            <td>인생챕터 외부공유</td>
-            <td class="no">–</td>
-            <td class="yes">✓</td>
+            <td>폰 사진 QR 업로드 · 파일 내보내기/가져오기</td>
+            <td class="yes">✓</td><td class="yes">✓</td>
           </tr>
           <tr>
-            <td>아이폰 · Android 앱 자동 동기화</td>
-            <td class="no">–</td>
-            <td class="yes">✓</td>
+            <td>관리 사진·영상 개수</td>
+            <td>5,000개까지</td><td>5,000개 초과도 가능</td>
+          </tr>
+          <tr>
+            <td>인생챕터 만들기<span class="td-sub">만든 챕터는 개수와 상관없이 항상 열람할 수 있어요</span></td>
+            <td>30개까지</td><td>31개째 이후도 가능</td>
+          </tr>
+          <tr>
+            <td>인생챕터 외부 공유(링크)</td>
+            <td class="no">–</td><td class="yes">✓</td>
+          </tr>
+          <tr>
+            <td>폰 앱 자동(백그라운드) 동기화</td>
+            <td class="no">–</td><td>✓ <span class="soon">준비 중</span></td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <p class="pricing-note">
-      월간 구독은 결제 주기가 끝나면 자동으로 갱신·결제되고, 해지해도 이미 결제한 기간까지는 계속 이용할 수 있어요.<br>
-      연간 이용권은 이용 시작 전이거나, 결제 후 7일 이내에 기억숲 앱에 로그인한 기록이 없으면(미사용) 전액 환불돼요. 그 후에는 28,000원에서 사용 개월 수 × 3,000원을 뺀 금액이 환불되고, 사용한 달까지는 계속 이용할 수 있어요(내 계정 &gt; 구독관리에서 직접 취소).<br>
-      연간 이용권은 1회 결제로 1년간 이용하며 자동 갱신되지 않아요. 만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.<br>
-      월간 이용 중에 연간 이용권을 결제하면 남은 월간 기간 뒤에 1년이 더해지고, 월간 자동결제는 종료돼요.
-    </p>
+    <!-- 구독 안내 -->
+    <h2 class="pricing-h2">구독 안내</h2>
+    <div class="info-grid">
+      <div class="info-card">
+        <h3>월간 구독 <span class="info-tag">월 3,000원</span></h3>
+        <ul>
+          <li>결제일 기준으로 매달 자동 결제돼요.</li>
+          <li>결제가 실패하면 3시간 · 6시간 · 24시간 뒤에 최대 3번 다시 시도해요. 그동안(최대 1일)은 계속 이용할 수 있고, 모두 실패하면 구독이 종료돼요.</li>
+          <li>「내 계정 &gt; 구독관리」에서 언제든 해지할 수 있어요. 해지하면 이미 결제한 기간 끝까지 이용해요.</li>
+        </ul>
+      </div>
+      <div class="info-card">
+        <h3>연간 이용권 <span class="info-tag">28,000원</span></h3>
+        <ul>
+          <li>1회 결제로 1년간 이용해요. 자동 갱신되지 않아요.</li>
+          <li>만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.</li>
+        </ul>
+      </div>
+      <div class="info-card">
+        <h3>월간 ↔ 연간 변경</h3>
+        <ul>
+          <li>월간 이용 중 연간을 결제하면 남은 월간 기간 뒤에 1년이 이어지고, 월간 자동결제는 종료돼요.</li>
+          <li>연간 이용 중에는 월간으로 바꿀 수 없어요. 연간이 끝난 뒤 월간을 새로 시작할 수 있어요.</li>
+        </ul>
+      </div>
+      <div class="info-card">
+        <h3>환불</h3>
+        <ul>
+          <li><b>월간</b>: 이미 결제한 기간에 대한 환불은 없어요.</li>
+          <li><b>연간</b>: 이용 시작 전이거나, 결제 후 7일 이내에 기억숲 앱에 로그인한 기록이 없으면 전액 환불돼요.</li>
+          <li><b>연간(그 외)</b>: 28,000원 − (사용 개월 수 × 3,000원)을 환불하고, 사용한 달까지 계속 이용해요. 「내 계정 &gt; 구독관리」에서 직접 취소하세요.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="pricing-foot">이용 기간은 한국시간 기준 날짜 단위로 계산돼요. 자세한 내용은 <a href="terms.html" >이용약관</a> · <a href="terms.html#refund">환불 정책</a>을 확인해 주세요.</p>
 
     <div class="modal-overlay" id="checkoutModalOverlay">
       <div class="modal-box">
@@ -206,6 +253,20 @@
 
   const subscribeButtons = document.querySelectorAll('.subscribe-btn');
   subscribeButtons.forEach((btn) => { btn.dataset.defaultLabel = btn.textContent; });
+
+  // ---- 월간/연간 토글 ----
+  const planGrid = document.getElementById('planGrid');
+  const periodTabs = document.querySelectorAll('.bt-opt');
+  let periodChosenByUser = false;
+  function setPeriod(period) {
+    planGrid.dataset.period = period;
+    periodTabs.forEach((t) => {
+      const on = t.dataset.period === period;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  periodTabs.forEach((t) => t.addEventListener('click', () => { periodChosenByUser = true; setPeriod(t.dataset.period); }));
 
   let isLoggedIn = false;
   let currentSub = null; // 로그인한 사용자의 현재 구독 상태(users 문서) 캐시
@@ -460,6 +521,13 @@
   //  - 월간: 정기결제(빌링키). 연간 이용권 사용 중에는 선택 불가.
   //  - 연간: 1회 결제. 월간 이용 중이면 남은 기간 뒤에 이어 붙이고, 연간 이용 중이면 연장.
   function renderPlanButtons() {
+    // 연간 이용권 사용자는 연간 탭을 먼저 보여준다(사용자가 직접 고르기 전까지).
+    if (!periodChosenByUser) setPeriod(isOneTimeActive() ? 'annual' : 'monthly');
+    const freeBtn = document.getElementById('freeStartBtn');
+    if (freeBtn) {
+      if (isLoggedIn) { freeBtn.textContent = '앱 다운로드'; freeBtn.setAttribute('href', 'download.html'); }
+      else { freeBtn.textContent = '무료로 시작하기'; freeBtn.setAttribute('href', 'signup.html'); }
+    }
     subscribeButtons.forEach((btn) => {
       const plan = btn.dataset.plan;
       btn.disabled = false;

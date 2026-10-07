@@ -350,7 +350,43 @@ form.signup button:hover{background:var(--accent-strong);}
 @media (max-width:720px){
   .pricing-cards{grid-template-columns:1fr;max-width:340px;}
 }
-.pricing-table-wrap{max-width:760px;margin:0 auto;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+/* ---- 요금제 페이지(토글 + 무료/구독 카드 + 안내) ---- */
+.billing-toggle{display:flex;width:max-content;max-width:100%;margin:8px auto 34px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:999px;box-shadow:var(--shadow);}
+.billing-toggle .bt-opt{appearance:none;border:0;background:transparent;font:inherit;font-size:14.5px;font-weight:600;color:var(--ink-dim);padding:9px 24px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap;transition:background .15s,color .15s;}
+.billing-toggle .bt-opt.active{background:var(--navy);color:#fff;}
+.billing-toggle .bt-save{font-size:11px;font-weight:700;color:#fff;background:var(--accent);padding:2px 8px;border-radius:999px;}
+.plan-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;max-width:760px;margin:0 auto 52px;align-items:stretch;}
+.plan-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:30px 26px;display:flex;flex-direction:column;}
+.plan-card-accent{border:2px solid rgba(203,107,69,.55);background:var(--accent-bg);}
+.plan-card .plan-name{font-size:17px;}
+.plan-card .plan-price{font-size:30px;margin:2px 0 4px;}
+.plan-card .plan-price .per{font-size:14px;font-weight:600;color:var(--ink-dim);}
+.plan-card .plan-price-sub{min-height:36px;margin:0 0 18px;font-size:12.5px;}
+.plan-card .btn{display:block;width:100%;text-align:center;white-space:normal;line-height:1.4;}
+.plan-grid[data-period="monthly"] [data-for="annual"]{display:none;}
+.plan-grid[data-period="annual"] [data-for="monthly"]{display:none;}
+.plan-feats-head{margin:22px 0 4px;font-size:12.5px;font-weight:700;color:var(--accent-strong);}
+.plan-feats{list-style:none;margin:20px 0 0;padding:0;text-align:left;font-size:14px;line-height:1.55;color:var(--ink-dim);}
+.plan-feats-head + .plan-feats{margin-top:8px;}
+.plan-feats li{position:relative;padding:5px 0 5px 24px;}
+.plan-feats li::before{content:"\2713";position:absolute;left:2px;top:5px;color:var(--accent-strong);font-weight:700;}
+.plan-feats b{color:var(--ink);}
+.soon{display:inline-block;font-size:11px;font-weight:700;color:var(--ink-faint);border:1px solid var(--border);border-radius:999px;padding:0 7px;margin-left:4px;vertical-align:1px;background:var(--surface);}
+.pricing-h2{font-size:19px;color:var(--navy);text-align:center;margin:0 auto 18px;}
+.info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:760px;margin:0 auto;}
+.info-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 22px;}
+.info-card h3{font-size:15.5px;color:var(--navy);margin:0 0 10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.info-tag{font-size:11.5px;font-weight:700;color:var(--accent-strong);background:var(--accent-bg);padding:2px 9px;border-radius:999px;}
+.info-card ul{margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;color:var(--ink-dim);}
+.info-card li{margin:3px 0;}
+.info-card b{color:var(--ink);}
+.pricing-foot{max-width:760px;margin:18px auto 0;text-align:center;font-size:12.5px;color:var(--ink-faint);line-height:1.7;}
+.pricing-foot a{color:var(--accent-strong);text-decoration:underline;}
+@media (max-width:720px){
+  .plan-grid,.info-grid{grid-template-columns:1fr;max-width:420px;}
+  .plan-card-accent{order:-1;}
+}
+.pricing-table-wrap{max-width:760px;margin:0 auto 52px;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .pricing-table{width:100%;min-width:520px;border-collapse:separate;border-spacing:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);overflow:hidden;}
 .pricing-table th,.pricing-table td{padding:14px 16px;text-align:center;font-size:14px;color:var(--ink-dim);border-top:1px solid var(--border);}
 .pricing-table thead th{border-top:none;padding:16px;font-weight:700;color:var(--ink);}
