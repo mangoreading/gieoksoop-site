@@ -186,6 +186,7 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
       next_billing_at: nextBillingAt,
       billing_retry_count: 0,
       billing_retry_at: null,
+      billing_first_failure_at: null,
       ...(cardInfo || {}),
     });
   } catch (e) {
@@ -1225,10 +1226,10 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
   return null;
 }
 
-// 자동결제 실패 시 재시도 일정. 실패할 때마다 아래 간격(시간) 뒤에 다시 시도하고, 모두 실패하면 구독을 종료한다.
-// 예) 00:00 결제 실패 → 03:00 재시도(카드사 점검 시간 대비) → 다음 날 03:00 → 그다음 이틀 뒤 03:00 → 모두 실패하면 종료.
-// 재시도하는 동안 구독 상태는 active로 유지한다(이용 유예). cron이 매시간 돌기 때문에 시도 시각은 정시 단위로 맞춰진다.
-export const BILLING_RETRY_DELAYS_HOURS = [3, 24, 48];
+// 자동결제 실패 시 재시도 일정. "최초 실패 시각"으로부터 아래 시간(시간) 뒤에 각각 다시 시도하고, 모두 실패하면 구독을 종료한다.
+// 예) 00:00 결제 실패 → 03:00 재시도(카드사 점검 시간 대비) → 06:00 → 다음 날 00:00 → 모두 실패하면 종료.
+// 재시도하는 동안(최대 1일) 구독 상태는 active로 유지한다(이용 유예). cron이 매시간 돌기 때문에 시도 시각은 정시 단위로 맞춰진다.
+export const BILLING_RETRY_DELAYS_HOURS = [3, 6, 24];
 const RETRY_TOLERANCE_MS = 5 * 60 * 1000; // cron이 예정 시각보다 몇 초 먼저 돌아도 놓치지 않게 하는 여유
 
 // 정기결제 자동 실행 -- Cloudflare Cron Trigger가 매시간 호출한다(index.js의
@@ -1289,6 +1290,8 @@ export async function runScheduledBilling(env) {
     const chargedAt = new Date();
     // 이번이 몇 번째 시도인지(첫 시도 = 1). 직전까지 연속 실패한 횟수 + 1.
     const attemptNo = (Number(userDoc.billing_retry_count) || 0) + 1;
+    // 재시도 일정의 기준이 되는 최초 실패 시각(첫 실패면 지금).
+    const firstFailureAt = attemptNo > 1 && userDoc.billing_first_failure_at && userDoc.billing_first_failure_at.getTime ? userDoc.billing_first_failure_at : chargedAt;
 
     if (result.ok) {
       // 새 이용 기간은 "이전 기간의 종료 시각(= 예정된 결제일 00:00)"에서 이어 붙인다(배치가 늦게 돌아도 결제일이 밀리지 않게).
@@ -1332,6 +1335,7 @@ export async function runScheduledBilling(env) {
           last_billing_at: chargedAt,
           billing_retry_count: 0,
           billing_retry_at: null,
+          billing_first_failure_at: null,
           billing_last_failure_at: null,
           billing_last_failure_reason: null,
           ...(cardInfo || {}),
@@ -1364,11 +1368,12 @@ export async function runScheduledBilling(env) {
           // 재시도 예약 -- 구독은 active로 유지하고(이용 유예), 정해진 시간 뒤에 다시 시도한다.
           await firestorePatchDoc(env, `users/${uid}`, {
             billing_retry_count: attemptNo,
-            billing_retry_at: new Date(chargedAt.getTime() + delayHours * 3600 * 1000),
+            billing_retry_at: new Date(firstFailureAt.getTime() + delayHours * 3600 * 1000),
+            billing_first_failure_at: firstFailureAt,
             billing_last_failure_at: chargedAt,
             billing_last_failure_reason: message,
           });
-          console.log("[정기결제] 실패 → 재시도 예약", uid, `${attemptNo}/${BILLING_RETRY_DELAYS_HOURS.length}`, `${delayHours}시간 뒤`);
+          console.log("[정기결제] 실패 → 재시도 예약", uid, `${attemptNo}/${BILLING_RETRY_DELAYS_HOURS.length}`, `최초 실패 ${delayHours}시간 후`);
         } else {
           // 재시도까지 모두 실패 -- 구독을 종료한다(카드 재등록은 사용자가 다시 구독하기를 눌러야 한다).
           await firestorePatchDoc(env, `users/${uid}`, {
@@ -1377,6 +1382,7 @@ export async function runScheduledBilling(env) {
             next_billing_at: null,
             billing_retry_count: 0,
             billing_retry_at: null,
+            billing_first_failure_at: null,
             billing_last_failure_at: chargedAt,
             billing_last_failure_reason: message,
           });
@@ -1422,6 +1428,7 @@ export async function runScheduledBilling(env) {
         card_issuer: null,
         billing_retry_count: 0,
         billing_retry_at: null,
+        billing_first_failure_at: null,
       });
       console.log("[구독만료] 처리 완료", uid);
     } catch (e) {
