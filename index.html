@@ -18,14 +18,15 @@
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>기억숲 — LIFE ARCHIVE</title>
-<meta name="description" content="여러 기기에 흩어진 사진을 연결하면, AI가 시간·장소·사람을 분석해 당신의 일상을 하나의 기억으로 이어드립니다. 사진 원본은 당신의 컴퓨터를 떠나지 않습니다.">
+<meta name="description" content="폴더만 연결하면, 기억숲이 시간·장소·사람으로 사진을 이어 내 인생의 타임라인으로 만들어드려요. 사진 원본은 내 컴퓨터를 떠나지 않아요.">
 <link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <link rel="icon" href="img/apple-touch-icon.png">
 <link rel="stylesheet" href="css/site.css">
 
 <meta property="og:title" content="기억숲 — LIFE ARCHIVE">
-<meta property="og:description" content="흩어진 사진 속에서, 당신의 기억을 찾아드립니다.">
-<meta property="og:image" content="img/logo-full.png">
+<meta property="og:description" content="폴더만 연결하면, 흩어진 사진이 내 인생의 타임라인이 됩니다.">
+<meta property="og:image" content="https://gieoksoop.com/img/logo-full.png">
+<meta property="og:url" content="https://gieoksoop.com/">
 <meta property="og:type" content="website">
 </head>
 <body>
@@ -56,63 +57,255 @@
   </div>
 </nav>
 
-<div class="hero">
+<div class="hero lp-hero">
   <div class="wrap">
     <img class="logo" src="img/logo-full.png" alt="기억숲 LIFE ARCHIVE">
     <span class="badge">출시 준비 중</span>
     <h1>사진은 많은데, 정리된 적은 없었다면</h1>
-    <p class="lead">여러 기기에 흩어진 수년, 수십 년치 사진과 영상을 연결해보세요.<br>
-    기억숲이 시간·장소·사람을 분석해서 당신의 기억을 시간순으로 다시 엮어드립니다.</p>
+    <p class="lead">폴더만 연결하면, 기억숲이 시간·장소·사람으로 사진을 이어서<br>
+    <strong>내 인생의 타임라인</strong>으로 만들어드려요. 정리하지 않아도 괜찮아요.</p>
     <div class="cta-row">
-      <a href="signup.html" class="btn btn-primary">무료로 시작하기</a>
-      <a href="#waitlist" class="btn btn-outline">출시 소식만 받기</a>
+      <div data-auth="guest"><a href="signup.html" class="btn btn-primary">무료로 시작하기</a></div>
+      <div data-auth="user"><a href="download.html" class="btn btn-primary">앱 다운로드</a></div>
+      <a href="#features" class="btn btn-outline">서비스 둘러보기</a>
     </div>
+  </div>
+
+  <div class="lp-hero-shot">
+    <div class="mk" aria-hidden="true">
+      <div class="mk-bar">
+        <div class="mk-dots"><i></i><i></i><i></i></div>
+        <div class="mk-brand">기억숲</div>
+        <div class="mk-nav"><span>앨범 보기</span><span class="on">타임라인</span><span>인생 챕터</span><span>인물</span><span>즐겨찾기</span></div>
+      </div>
+      <div class="mk-body">
+        <div class="mk-title">2024년 <small>이벤트 38개 · 사진 2,914장</small></div>
+        <div class="mk-ev">
+          <div>
+            <div class="when">2024.05.04 – 05.06</div>
+            <div class="name">제주 가족여행</div>
+            <div class="meta">제주시 애월읍 · 사진 182장 · 영상 9개</div>
+            <div class="tags"><span>가족 3명</span><span>지도에서 보기</span></div>
+          </div>
+          <div class="thumbs"><div class="ph ph2"></div><div class="ph ph1"></div><div class="ph ph7"></div><div class="ph ph3"></div></div>
+        </div>
+        <div class="mk-ev">
+          <div>
+            <div class="when">2024.04.13</div>
+            <div class="name">벚꽃 나들이</div>
+            <div class="meta">서울 · 사진 64장</div>
+            <div class="tags"><span>친구 2명</span></div>
+          </div>
+          <div class="thumbs"><div class="ph ph7"></div><div class="ph ph4"></div><div class="ph ph6"></div><div class="ph ph3"></div></div>
+        </div>
+        <div class="mk-ev">
+          <div>
+            <div class="when">2024.03.02</div>
+            <div class="name">하준이 생일</div>
+            <div class="meta">집 · 사진 38장 · 영상 4개</div>
+            <div class="tags"><span>가족 4명</span></div>
+          </div>
+          <div class="thumbs"><div class="ph ph6"></div><div class="ph ph8"></div><div class="ph ph5"></div><div class="ph ph1"></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="lp-demo-note">화면은 이해를 돕기 위한 예시입니다.</p>
   </div>
 </div>
 
 <section>
   <div class="wrap">
-    <h2 class="section-title">사진 정리가 아니라, 시간 정리</h2>
-    <p class="section-sub">폴더를 연결하는 순간부터, 기억숲은 파일이 아니라 당신의 시간을 봅니다.</p>
+    <h2 class="section-title">이런 적 있으시죠?</h2>
+    <p class="section-sub">사진은 계속 쌓이는데, 정리는 늘 다음으로 미뤄집니다.</p>
+    <div class="lp-pain">
+      <div>폴더는 수십 개인데, 어디에 뭐가 있는지 모르겠어요<span>여행도 생일도 같은 폴더에 섞여 있어요</span></div>
+      <div>폰, PC, 외장하드에 사진이 흩어져 있어요<span>합쳐서 한눈에 본 적이 한 번도 없어요</span></div>
+      <div>정리해야지, 하면서 몇 년째 미뤄뒀어요<span>엄두가 안 나서 열어보지도 않게 돼요</span></div>
+    </div>
+    <p class="lp-bridge">기억숲은 정리하라고 하지 않아요.<br><em>연결만 하세요. 정리는 기억숲이 합니다.</em></p>
+  </div>
+</section>
+
+<section class="pillars-section">
+  <div class="wrap">
+    <h2 class="section-title">시작은 세 걸음이면 돼요</h2>
+    <p class="section-sub">사진을 옮기거나 이름을 바꾸거나 업로드할 필요가 없어요.</p>
     <div class="steps">
       <div class="step">
         <span class="num">1</span>
-        <h3>사진 폴더를 연결하세요</h3>
-        <p>PC·Mac의 폴더나 외장하드를 연결하면 끝. 사진을 옮기거나 업로드할 필요가 없습니다.</p>
+        <h3>폴더를 연결하세요</h3>
+        <p>컴퓨터의 사진 폴더나 외장하드를 고르면 끝. 폰에 있는 사진은 QR 코드를 스캔해서 바로 보낼 수 있어요.</p>
       </div>
       <div class="step">
         <span class="num">2</span>
-        <h3>AI가 자동으로 정리합니다</h3>
-        <p>촬영 시간·장소·함께 있던 사람을 분석해, 흩어진 사진들을 하나의 사건(이벤트)으로 묶어줍니다.</p>
+        <h3>알아서 정리돼요</h3>
+        <p>촬영 시간·장소·함께 있던 사람을 읽어서, 흩어진 사진을 하나의 사건(이벤트)으로 묶어줘요.</p>
       </div>
       <div class="step">
         <span class="num">3</span>
-        <h3>기억의 타임라인이 완성됩니다</h3>
-        <p>사진 목록이 아니라, "내 시간이 이렇게 흘러왔구나"를 느끼게 하는 연대기가 만들어집니다.</p>
+        <h3>내 시간을 열어보세요</h3>
+        <p>타임라인, 인물, 지도로 내 지난 시간을 훑어보고, 마음에 남은 순간은 인생 챕터로 간직해요.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2 class="section-title">기억숲에서는 이런 걸 할 수 있어요</h2>
+    <p class="section-sub">사진을 보관하는 데서 끝나지 않고, 기억으로 다시 꺼내볼 수 있게 도와드려요.</p>
+
+    <div class="lp-feat">
+      <div class="lp-feat-txt">
+        <span class="tag">타임라인</span>
+        <h3>여행도, 생일도, 평범한 주말도<br>날짜순으로 알아서 묶여요</h3>
+        <p>수천 장의 사진이 "그날의 이야기" 단위로 정리돼요. 폴더를 뒤질 필요 없이, 시간을 따라 내려가며 다시 만나보세요.</p>
+        <p class="sub">이름 붙이기도, 폴더 옮기기도 필요 없어요.</p>
+      </div>
+      <div class="mk" aria-hidden="true">
+        <div class="mk-bar"><div class="mk-dots"><i></i><i></i><i></i></div><div class="mk-brand">기억숲</div><div class="mk-nav"><span>앨범 보기</span><span class="on">타임라인</span><span>인생 챕터</span><span>인물</span></div></div>
+        <div class="mk-body">
+          <div class="mk-title">2019년 <small>이벤트 31개</small></div>
+          <div class="mk-ev"><div><div class="when">2019.10.03 – 10.06</div><div class="name">설악산 단풍 여행</div><div class="meta">속초 · 사진 211장</div></div><div class="thumbs"><div class="ph ph8"></div><div class="ph ph3"></div><div class="ph ph1"></div><div class="ph ph6"></div></div></div>
+          <div class="mk-ev"><div><div class="when">2019.08.17</div><div class="name">여름 바다</div><div class="meta">강릉 · 사진 96장</div></div><div class="thumbs"><div class="ph ph2"></div><div class="ph ph4"></div><div class="ph ph2"></div><div class="ph ph7"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lp-feat rev">
+      <div class="lp-feat-txt">
+        <span class="tag">사람</span>
+        <h3>그 사람과 함께한 시간을<br>한눈에 볼 수 있어요</h3>
+        <p>얼굴을 알아보고 사람별로 모아줘요. 아이가 자라온 시간, 오래된 친구와의 추억을 연도별로 따라가 보세요.</p>
+        <p class="sub">잘못 묶인 사람은 직접 합치고 나눌 수 있어요.</p>
+      </div>
+      <div class="mk" aria-hidden="true">
+        <div class="mk-bar"><div class="mk-dots"><i></i><i></i><i></i></div><div class="mk-brand">기억숲</div><div class="mk-nav"><span>앨범 보기</span><span>타임라인</span><span>인생 챕터</span><span class="on">인물</span></div></div>
+        <div class="mk-body">
+          <div class="mk-people">
+            <div class="mk-person sel"><div class="av" style="background:linear-gradient(135deg,#e39a78,#cb6b45)">하</div><b>하준</b><small>1,204장</small></div>
+            <div class="mk-person"><div class="av" style="background:linear-gradient(135deg,#8fb4c9,#4f8fa8)">지</div><b>지은</b><small>862장</small></div>
+            <div class="mk-person"><div class="av" style="background:linear-gradient(135deg,#a9c48f,#5f8f5c)">민</div><b>민수</b><small>517장</small></div>
+            <div class="mk-person"><div class="av" style="background:linear-gradient(135deg,#c9a9d6,#8a63a3)">엄</div><b>엄마</b><small>342장</small></div>
+          </div>
+          <div class="mk-years">
+            <div class="lbl">하준과 함께한 시간 · 2019 – 2024</div>
+            <div class="mk-bars">
+              <div><i style="height:22%"></i>2019</div>
+              <div><i style="height:38%"></i>2020</div>
+              <div><i style="height:55%"></i>2021</div>
+              <div><i style="height:72%"></i>2022</div>
+              <div><i style="height:88%"></i>2023</div>
+              <div><i style="height:100%"></i>2024</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lp-feat">
+      <div class="lp-feat-txt">
+        <span class="tag">지도</span>
+        <h3>사진 속 장소를<br>지도 위에서 다시 걸어봐요</h3>
+        <p>어디서 찍었는지가 지도에 표시돼요. 그 달의 발자취도, 인생 전체의 발자취도 한 장의 지도로 볼 수 있어요.</p>
+      </div>
+      <div class="mk" aria-hidden="true">
+        <div class="mk-map">
+          <svg viewBox="0 0 520 270" preserveAspectRatio="xMidYMid slice">
+            <rect width="520" height="270" fill="#ece5d1"/>
+            <path d="M0 190 C80 170 120 215 200 205 C290 195 330 150 420 160 C470 166 500 150 520 140 L520 270 L0 270 Z" fill="#c9e1ea"/>
+            <path d="M0 60 C60 40 120 70 180 50 C250 28 300 60 360 40 C420 20 480 40 520 24" fill="none" stroke="#fffaf0" stroke-width="7" stroke-linecap="round"/>
+            <path d="M90 0 C100 70 70 120 120 190" fill="none" stroke="#fffaf0" stroke-width="5" stroke-linecap="round"/>
+            <path d="M300 0 C310 60 360 90 340 160" fill="none" stroke="#fffaf0" stroke-width="5" stroke-linecap="round"/>
+            <path d="M160 110 C240 120 280 100 330 118 C390 138 440 120 520 98" fill="none" stroke="#fffaf0" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="150" cy="150" r="30" fill="#d7e5c4" opacity=".7"/>
+            <circle cx="420" cy="70" r="36" fill="#d7e5c4" opacity=".7"/>
+            <g fill="#cb6b45" stroke="#fff" stroke-width="3"><circle cx="120" cy="88" r="9"/><circle cx="214" cy="140" r="9"/><circle cx="372" cy="104" r="9"/><circle cx="446" cy="150" r="9"/><circle cx="64" cy="152" r="9"/></g>
+            <g><circle cx="300" cy="86" r="19" fill="#b0552f" stroke="#fff" stroke-width="3"/><text x="300" y="91" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="sans-serif">12</text></g>
+          </svg>
+          <div class="mk-pop"><div class="ph ph2"></div><b>제주 애월</b><small>2024.05.04 · 사진 38장</small></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lp-feat rev">
+      <div class="lp-feat-txt">
+        <span class="tag">인생 챕터</span>
+        <h3>사진에 그때의 마음을 더해<br>나만의 일기장으로 남겨요</h3>
+        <p>마음에 남은 순간은 인생 챕터로 만들어요. 사진과 함께 그날의 이야기를 적어두면, 시간이 지나도 다시 꺼내볼 수 있어요. 무엇을 쓸지 막막할 땐 초안을 도와드려요.</p>
+        <p class="sub">가족과 친구에게는 내가 고른 챕터만 링크로 보여줄 수 있어요.</p>
+      </div>
+      <div class="mk" aria-hidden="true">
+        <div class="mk-chapter">
+          <div class="mk-cover ph ph1" style="border-radius:0">
+            <div class="badges"><span>영구 보존</span><span>공유됨</span></div>
+            <div class="cap"><span class="gold"></span><h4>제주, 우리가 함께 걸은 3일</h4><small>2024.05.04 – 05.06 · 제주 · 사진 182장</small></div>
+          </div>
+          <div class="mk-story">
+            <div class="lbl">이야기</div>
+            <p>아이가 처음으로 바다에 발을 담근 날. 파도가 무서워 울다가도, 돌아서면 또 달려가던 모습이 오래 남을 것 같다.</p>
+            <div class="strip"><div class="ph ph2"></div><div class="ph ph7"></div><div class="ph ph8"></div></div>
+            <div class="mk-share"><b>공유 링크</b><span>gieoksoop.com/share/…</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="lp-feat">
+      <div class="lp-feat-txt">
+        <span class="tag">영상</span>
+        <h3>챕터를 한 편의 영상으로<br>만들어드려요</h3>
+        <p>사진과 영상이 배경음악과 함께 한 편의 이야기가 돼요. 날짜와 장소 자막, 그날의 현장음까지 담겨서 보는 순간 그때로 돌아가요.</p>
+        <p class="sub">잔잔하게, 경쾌하게 — 분위기도 고를 수 있어요.</p>
+      </div>
+      <div class="mk" aria-hidden="true">
+        <div class="mk-video ph ph1" style="border-radius:0">
+          <div class="music">♪ 잔잔하게</div>
+          <div class="play"></div>
+          <div class="sub">제주, 우리가 함께 걸은 3일<small>2024.05.04 · 제주 애월</small></div>
+          <div class="prog"><i></i></div>
+        </div>
+      </div>
+    </div>
+
+    <p class="lp-also-label">그 밖에도</p>
+    <div class="lp-also">
+      <span>폰 사진 QR로 보내기</span>
+      <span>사람·장소·날짜로 검색</span>
+      <span>즐겨찾기</span>
+      <span>사진 간단 보정</span>
+      <span>PDF로 내보내기</span>
+      <span>데이터 전체 내보내기</span>
     </div>
   </div>
 </section>
 
 <section class="pillars-section">
   <div class="wrap">
-    <h2 class="section-title">기억숲이 다르게 생각하는 세 가지</h2>
-    <p class="section-sub">사진을 정리해주는 도구가 아니라, 흩어진 기억을 완성된 산출물로 만들어주는 서비스를 지향합니다.</p>
-    <div class="pillars">
-      <div class="pillar">
-        <div class="tag">Collect</div>
-        <h3>수집의 완전성</h3>
-        <p>디지털 사진뿐 아니라, 언젠가는 오래된 인화사진과 앨범까지 같은 흐름으로 담아낼 수 있도록 만들어갑니다.</p>
+    <h2 class="section-title">왜 기억숲이어야 할까요</h2>
+    <p class="section-sub">다른 서비스가 사진을 맡아두는 곳이라면, 기억숲은 사진을 기억으로 되돌려주는 곳이에요.</p>
+    <div class="lp-why">
+      <div>
+        <h3>엄두가 안 나도 시작할 수 있어요</h3>
+        <p>폴더를 연결하는 것만으로 정리가 끝나요. 사진을 하나하나 분류하는 수고 없이, 미뤄두던 사진을 바로 열어볼 수 있어요.</p>
       </div>
-      <div class="pillar">
-        <div class="tag">Understand</div>
-        <h3>사람 중심의 이해</h3>
-        <p>단순한 얼굴 인식이 아니라, 그 사람과 함께한 시간 자체를 하나의 타임라인으로 보여줍니다.</p>
+      <div>
+        <h3>사진은 내 컴퓨터에 그대로 있어요</h3>
+        <p>원본을 옮기거나 올리지 않아요. 사진을 클라우드에 맡기는 대신, 내 손에 두고 안전하게 이어보세요.</p>
       </div>
-      <div class="pillar">
-        <div class="tag">Complete</div>
-        <h3>산출물의 완성</h3>
-        <p>연도별·인물별 인생 챕터를 자동으로 초안 잡아, 자랑하고 싶어지는 결과물로 다듬어드립니다.</p>
+      <div>
+        <h3>정리를 넘어 기억으로 남아요</h3>
+        <p>목록으로 끝나지 않고, 이야기가 담긴 챕터와 한 편의 영상으로 남아서 가족에게 건네줄 수 있어요.</p>
+      </div>
+    </div>
+    <div class="privacy">
+      <h2>우리는 스토리지를 팔지 않습니다</h2>
+      <p>사진 원본은 당신의 컴퓨터를 떠나지 않아요. 기억숲이 사라져도 당신의 사진에는 아무 일도 생기지 않습니다.</p>
+      <div class="points">
+        <span>원본 업로드 없음</span>
+        <span>내 컴퓨터에서 정리</span>
+        <span>언제든 전체 내보내기</span>
+        <span>서비스가 종료돼도 원본 그대로</span>
       </div>
     </div>
   </div>
@@ -120,30 +313,40 @@
 
 <section>
   <div class="wrap">
-    <div class="privacy">
-      <h2>우리는 스토리지를 팔지 않습니다</h2>
-      <p>사진 원본은 원칙적으로 당신의 컴퓨터를 떠나지 않습니다. 분석은 로컬에서 이뤄지고, 서비스가 사라져도 당신의 원본 사진에는 아무 영향이 없습니다.</p>
-      <div class="points">
-        <span>원본 미업로드 원칙</span>
-        <span>로컬 우선 분석</span>
-        <span>언제든 전체 내보내기</span>
-        <span>서비스 종료돼도 원본 무손상</span>
-      </div>
+    <h2 class="section-title">자주 묻는 질문</h2>
+    <p class="section-sub">시작하기 전에 궁금하실 만한 것들이에요.</p>
+    <div class="lp-faq">
+      <details>
+        <summary>내 사진이 서버에 올라가나요?</summary>
+        <p>아니요. 사진과 영상 원본은 내 컴퓨터에 그대로 있고, 정리도 내 컴퓨터에서 이뤄져요. 가족·친구에게 보여주려고 직접 공유를 선택한 챕터만 예외예요.</p>
+      </details>
+      <details>
+        <summary>폰에 있는 사진은 어떻게 가져오나요?</summary>
+        <p>앱에 나오는 QR 코드를 폰으로 스캔하면, 같은 와이파이 안에서 바로 사진을 보낼 수 있어요. 폰에 따로 앱을 설치하지 않아도 돼요.</p>
+      </details>
+      <details>
+        <summary>사진을 폴더별로 미리 정리해 둬야 하나요?</summary>
+        <p>그럴 필요 없어요. 폴더가 어지럽게 섞여 있어도, 촬영 시간과 장소를 읽어서 기억숲이 알아서 묶어줘요. 원본 파일은 옮기거나 바꾸지 않아요.</p>
+      </details>
+      <details>
+        <summary>외장하드를 빼두면 사진이 사라지나요?</summary>
+        <p>외장하드가 연결돼 있을 때 사진을 볼 수 있어요. 오래 간직하고 싶은 챕터는 '영구 보존'으로 컴퓨터에 따로 남겨둘 수 있어서, 외장하드가 없어도 계속 볼 수 있어요.</p>
+      </details>
+      <details>
+        <summary>기억숲을 그만 쓰게 되면 어떻게 되나요?</summary>
+        <p>원본 사진은 처음 그대로 남아 있어요. 기억숲에서 정리한 내용은 언제든 파일로 내보낼 수 있어요.</p>
+      </details>
     </div>
   </div>
 </section>
 
-<section class="center-card" id="waitlist">
+<section style="padding-top:8px;">
   <div class="wrap">
-    <div class="card">
-      <h2>가장 먼저 만나보세요</h2>
-      <p class="desc">이메일을 남겨주시면 기억숲이 준비되는 대로 가장 먼저 알려드립니다. 지금 바로 써보고 싶다면 회원가입으로 시작하셔도 좋아요.</p>
-      <form class="signup" id="signupForm">
-        <input type="email" id="signupEmail" placeholder="you@example.com" required>
-        <button type="submit">알림 받기</button>
-      </form>
-      <div class="form-success" id="signupSuccess">감사합니다! 메일 앱이 열리면 보내기만 눌러주세요 — 그러면 접수가 완료됩니다.</div>
-      <p class="form-note">남겨주신 이메일은 출시 안내 용도로만 사용됩니다.</p>
+    <div class="lp-final">
+      <h2>미뤄둔 사진, 이제 연결만 하세요</h2>
+      <p>지금 가입하고 무료로 시작해 보세요.</p>
+      <div data-auth="guest"><a href="signup.html" class="btn btn-primary">무료로 시작하기</a></div>
+      <div data-auth="user"><a href="download.html" class="btn btn-primary">앱 다운로드</a></div>
     </div>
   </div>
 </section>
@@ -180,17 +383,5 @@
   initAccountMenu();
   initLangToggle();
 </script>
-<script>
-document.getElementById('signupForm').addEventListener('submit', function(e){
-  e.preventDefault();
-  var email = document.getElementById('signupEmail').value.trim();
-  if(!email) return;
-  var subject = encodeURIComponent('기억숲 출시 알림 신청');
-  var body = encodeURIComponent('출시 알림을 받고 싶은 이메일: ' + email);
-  window.location.href = 'mailto:mangoreading.it@gmail.com?subject=' + subject + '&body=' + body;
-  document.getElementById('signupSuccess').style.display = 'block';
-});
-</script>
-
 </body>
 </html>
