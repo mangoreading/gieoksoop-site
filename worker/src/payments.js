@@ -19,7 +19,9 @@ import {
   firestoreQuery,
   firestoreQueryDueBilling,
   firestoreQueryDueCancellation,
+  firestoreDeleteDoc,
 } from "./firestore.js";
+import { PLAN_MONTHS, stackStart, toLedgerEntry, revokePeriod, summarizeLedger } from "./ledger.js";
 
 // oneTime: true 이면 빌링키 자동결제가 아니라 단건 결제(requestPayment)로만 구매하는 플랜.
 // 연간은 PG(KG이니시스)에서 연 단위 정기결제를 허용하지 않아 단건 결제로 받는다.
@@ -171,6 +173,7 @@ export async function handleSubscribe(request, env, verifyFirebaseIdToken) {
       created_at: now,
       period_start: now,
       period_end: nextBillingAt,
+      period_months: planInfo.periodMonths,
       created_by: "portone",
       payment_id: paymentId,
       ...(cardInfo || {}),
@@ -254,8 +257,7 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
   }
 
   const now = new Date();
-  const wasActive = !!(userDoc && userDoc.subscription_status === "active" && userDoc.next_billing_at);
-  const base = wasActive && userDoc.next_billing_at.getTime() > now.getTime() ? userDoc.next_billing_at : now;
+  const { base, wasActive } = stackStart(userDoc, now);
   const expiresAt = addMonths(base, planInfo.periodMonths);
 
   const oldBillingKey = userDoc && userDoc.billing_key;
@@ -309,6 +311,7 @@ async function activateAnnualPurchase(env, uid, paymentId, createdBy) {
       created_at: now,
       period_start: base,
       period_end: expiresAt,
+      period_months: planInfo.periodMonths,
       created_by: createdBy,
       payment_id: paymentId,
       ...(cardInfo || {}),
@@ -437,7 +440,15 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   if (userDoc.last_refunded_payment_id === paymentId) {
     return jsonResponse({ error: "already_refunded" }, 409);
   }
-  const periodStart = annualPeriodStart(userDoc);
+  // 환불 기준 기간 시작일: 결제 기록에 저장된 구독기간 시작일을 우선 쓰고, 없는 예전 건은 사용자 문서 값으로 추정한다.
+  let paymentRows = [];
+  try {
+    paymentRows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
+  } catch (e) {
+    console.error("refund_payment_row_lookup_failed", uid, paymentId, e);
+  }
+  const paymentRow = paymentRows[0] || null;
+  const periodStart = (paymentRow && paymentRow.period_start && paymentRow.period_start.getTime && paymentRow.period_start) || annualPeriodStart(userDoc);
   if (!periodStart) return jsonResponse({ error: "period_start_unknown" }, 409);
 
   let payment;
@@ -481,77 +492,47 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   }
 
   // 이용 기간 정리. 환불은 이미 성공했으므로 여기서 실패해도 사용자에겐 환불 성공으로 알리고 로그만 남긴다.
-  const expiry = userDoc.next_billing_at || null;
-  const newExpiry = expiry ? addMonths(expiry, -PLANS.annual.periodMonths) : null;
-  const startsAt = userDoc.annual_starts_at && userDoc.annual_starts_at.getTime() > now.getTime() ? userDoc.annual_starts_at : null;
-  const TOLERANCE_MS = 2 * 24 * 60 * 60 * 1000;
-
-  const endedPatch = {
-    subscription_status: "canceled",
-    cancel_at_period_end: false,
-    auto_renew: false,
-    next_billing_at: null,
-    annual_starts_at: null,
-    billing_key: null,
-    card_brand: null,
-    card_name: null,
-    card_number: null,
-    card_issuer: null,
-  };
-  let patch;
-  let outcome;
-  if (calc.mode === "prorated") {
-    // 사용한 달까지는 이용 유지 -- 자동 갱신이 없으니 그날 기존 만료 패스가 구독을 끝낸다.
-    patch = {
-      next_billing_at: calc.endsAt,
-      annual_starts_at: null,
-      auto_renew: false,
-      cancel_at_period_end: true,
-      annual_cancel_requested_at: now,
-    };
-    outcome = "ends_at_used_month_end";
-  } else if (calc.started) {
-    patch = endedPatch;
-    outcome = "ended";
-  } else if (startsAt && newExpiry && newExpiry.getTime() <= startsAt.getTime() + TOLERANCE_MS) {
-    patch = {
-      subscription_plan: "monthly",
-      next_billing_at: startsAt,
-      annual_starts_at: null,
-      auto_renew: false,
-      cancel_at_period_end: true,
-    };
-    outcome = "reverted_to_monthly_period";
-  } else if (newExpiry && newExpiry.getTime() > now.getTime()) {
-    patch = { next_billing_at: newExpiry };
-    outcome = "shortened";
-  } else {
-    patch = endedPatch;
-    outcome = "ended";
+  // 결제 기록 상태를 먼저 바꾸고, 이용 기간은 장부 규칙(revokeUserPeriod)으로 줄이거나 회수한다:
+  //  - 사용 개월 수 차감 환불(prorated): 그 결제의 기간을 "시작일 + 사용 개월 수"로 줄인다(사용한 달까지 이용).
+  //  - 전액 환불: 그 결제의 기간을 전부 회수한다. 뒤에 이어 붙은 결제가 있으면 앞으로 당겨지고, 남는 기간이 없으면 구독 종료.
+  let targetRow = paymentRow;
+  if (!targetRow) {
+    targetRow = { id: "__virtual", plan: "annual", paid_at: paidAtDate, payment_id: paymentId, status: "paid" };
   }
-  patch.last_refunded_payment_id = paymentId;
-  patch.last_one_time_payment_id = null;
-  patch.last_one_time_paid_at = null;
-  patch.last_one_time_period_start = null;
-  patch.pending_plan = null;
-
-  try {
-    await firestorePatchDoc(env, `users/${uid}`, patch);
-  } catch (e) {
-    console.error("refund_user_update_failed", uid, paymentId, e);
+  if (!targetRow.period_start || !targetRow.period_start.getTime) {
+    targetRow = { ...targetRow, period_start: periodStart, period_end: addMonths(periodStart, PLANS.annual.periodMonths) };
   }
-  try {
-    const rows = await firestoreQuery(env, "payments", "payment_id", "EQUAL", paymentId);
-    if (rows[0]) {
-      await firestorePatchDoc(env, `payments/${rows[0].id}`, {
+  if (paymentRow) {
+    try {
+      await firestorePatchDoc(env, `payments/${paymentRow.id}`, {
         status: calc.amount >= PLANS.annual.amount ? "refunded" : "partial_refunded",
         refunded_amount: calc.amount,
         used_months: calc.usedMonths,
       });
+    } catch (e) {
+      console.error("refund_payment_record_failed", uid, paymentId, e);
     }
-  } catch (e) {
-    console.error("refund_payment_record_failed", uid, paymentId, e);
   }
+  const prorated = calc.mode === "prorated";
+  let revoked = { ok: false };
+  try {
+    revoked = await revokeUserPeriod(
+      env, uid, userDoc, targetRow, prorated ? calc.usedMonths : 0, now,
+      prorated ? { annual_cancel_requested_at: now, cancel_at_period_end: true, auto_renew: false } : {}
+    );
+  } catch (e) {
+    console.error("refund_user_update_failed", uid, paymentId, e);
+  }
+  const outcome = !revoked.ok
+    ? "update_failed"
+    : revoked.ended
+      ? "ended"
+      : prorated
+        ? "ends_at_used_month_end"
+        : (revoked.summary.plan || "monthly") === "monthly"
+          ? "reverted_to_monthly_period"
+          : "shortened";
+  const patch = revoked.patch || {};
 
   return jsonResponse({
     ok: true,
@@ -563,10 +544,88 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   });
 }
 
-// ---- 관리자 카드 취소(환불) ----
+// ---- 이용 기간 회수/단축 (환불·삭제 공통) ----
+// 결제 한 건(targetRow)의 이용 기간을 keepMonths 개월만 남기고(0이면 전부) 줄인다. 결제 기록에는 줄어든 기간을 저장하고,
+// 뒤에 이어 붙은 결제의 기간은 앞으로 당기며, 사용자 문서의 만료일/플랜/연간 시작 예정일/환불 기준 필드를 다시 맞춘다.
+// 남는 이용 기간이 없으면 구독을 종료(canceled)하고 빌링키·카드 정보를 정리한다.
+const ENDED_USER_PATCH = {
+  subscription_status: "canceled",
+  cancel_at_period_end: false,
+  auto_renew: false,
+  next_billing_at: null,
+  annual_starts_at: null,
+  billing_key: null,
+  card_brand: null,
+  card_name: null,
+  card_number: null,
+  card_issuer: null,
+  pending_plan: null,
+  annual_cancel_requested_at: null,
+};
+
+async function revokeUserPeriod(env, uid, userDoc, targetRow, keepMonths, now, extra = {}) {
+  const rows = await firestoreQuery(env, "payments", "uid", "EQUAL", uid);
+  const all = rows.filter((r) => r.id !== targetRow.id);
+  all.push(targetRow);
+  // 대상 결제는 이미 환불 상태로 바뀌었어도 "회수 전 기간"으로 계산해야 하므로 항상 포함시킨다.
+  const entries = all.map((r) => toLedgerEntry(r.id === targetRow.id ? { ...r, status: "paid" } : r)).filter(Boolean);
+  const userExpiry = userDoc.next_billing_at && userDoc.next_billing_at.getTime ? userDoc.next_billing_at : null;
+  const res = revokePeriod(entries, targetRow.id, keepMonths, now, userExpiry);
+  if (!res) return { ok: false, error: "ledger_target_missing" };
+
+  for (const e of res.entries) {
+    if (e.id === "__virtual") continue;
+    if (e.id !== targetRow.id && !res.changed.includes(e.id)) continue;
+    const patch = { period_start: e.start, period_end: e.end };
+    if (e.id === targetRow.id) patch.period_months = keepMonths;
+    try {
+      await firestorePatchDoc(env, `payments/${e.id}`, patch);
+    } catch (err) {
+      console.error("revoke_payment_period_failed", uid, e.id, err);
+    }
+  }
+
+  const ended = !res.expiresAt || res.expiresAt.getTime() <= now.getTime();
+  const la = ended ? null : res.lastAnnual;
+  const common = {
+    last_refunded_payment_id: targetRow.payment_id || userDoc.last_refunded_payment_id || null,
+    last_one_time_payment_id: la ? la.paymentId : null,
+    last_one_time_paid_at: la ? la.paidAt : null,
+    last_one_time_period_start: la ? la.start : null,
+  };
+  let patch;
+  if (ended) {
+    patch = { ...ENDED_USER_PATCH, ...common };
+    if (userDoc.billing_key) {
+      try {
+        await deleteBillingKey(env, userDoc.billing_key);
+      } catch (err) {
+        console.error("revoke_delete_billing_key_failed", uid, err);
+      }
+    }
+  } else {
+    patch = {
+      subscription_status: "active",
+      subscription_plan: res.summary.plan || "monthly",
+      next_billing_at: res.expiresAt,
+      annual_starts_at: res.summary.annualStartsAt,
+      ...(userDoc.payment_type === "one_time" ? { auto_renew: false, cancel_at_period_end: true } : {}),
+      ...common,
+      ...extra,
+    };
+  }
+  try {
+    await firestorePatchDoc(env, `users/${uid}`, patch);
+  } catch (err) {
+    console.error("revoke_user_update_failed", uid, err);
+    return { ok: true, ended, patch, summary: res.summary, userUpdateFailed: true };
+  }
+  return { ok: true, ended, patch, summary: res.summary };
+}
+
+// ---- 관리자 전용 API 공통 ----
 // 관리자 사이트(admin.gieoksoop.com)에서 호출한다. 호출자가 Firebase 로그인 + admins/{uid} 문서가 있는
-// 관리자인지 서버에서 직접 확인한다(화면의 관리자 체크는 UI용일 뿐). 포트원에 실제 카드 취소(전액/부분)를
-// 요청하고, 결제 기록과(선택 시) 이용 권한을 함께 정리한다.
+// 관리자인지 서버에서 직접 확인한다(화면의 관리자 체크는 UI용일 뿐).
 const ADMIN_ORIGINS = ["https://admin.gieoksoop.com"];
 
 function adminCorsHeaders(request) {
@@ -587,28 +646,37 @@ function withHeaders(res, extra) {
   return new Response(res.body, { status: res.status, headers });
 }
 
-export async function handleAdminRefund(request, env, verifyFirebaseIdToken) {
+async function withAdminCors(request, handler) {
   const cors = adminCorsHeaders(request);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-  const res = await adminRefundInner(request, env, verifyFirebaseIdToken);
-  return withHeaders(res, cors);
+  return withHeaders(await handler(), cors);
 }
 
-async function adminRefundInner(request, env, verifyFirebaseIdToken) {
+async function requireAdmin(request, env, verifyFirebaseIdToken) {
   const { user, error } = await requireUser(request, env, verifyFirebaseIdToken);
-  if (error) return error;
-
+  if (error) return { error };
   let adminDoc = null;
   try {
     adminDoc = await firestoreGetDoc(env, `admins/${user.uid}`);
   } catch (e) {
-    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+    return { error: jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500) };
   }
   if (!adminDoc) {
-    console.error("admin_refund_forbidden", user.uid);
-    return jsonResponse({ error: "not_admin" }, 403);
+    console.error("admin_forbidden", user.uid);
+    return { error: jsonResponse({ error: "not_admin" }, 403) };
   }
-  const adminLabel = user.email || user.uid;
+  return { user, adminLabel: user.email || user.uid };
+}
+
+// ---- 관리자 결제취소(환불) ----
+// 포트원에 실제 결제 취소(전액/부분)를 요청하고, 결제 기록을 정리하며, 선택하면 그 결제가 준 이용 기간도 회수한다.
+export async function handleAdminRefund(request, env, verifyFirebaseIdToken) {
+  return withAdminCors(request, () => adminRefundInner(request, env, verifyFirebaseIdToken));
+}
+
+async function adminRefundInner(request, env, verifyFirebaseIdToken) {
+  const { error, adminLabel } = await requireAdmin(request, env, verifyFirebaseIdToken);
+  if (error) return error;
 
   let body = {};
   try {
@@ -618,7 +686,8 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
   }
   const paymentId = typeof body.paymentId === "string" ? body.paymentId : "";
   const reason = (typeof body.reason === "string" ? body.reason.trim() : "").slice(0, 200) || "관리자 취소";
-  const endAccess = body.endAccess === true;
+  // 이용 기간도 함께 회수할지(기본: 회수 안 함). 예전 클라이언트의 endAccess 이름도 받아준다.
+  const revoke = body.revokePeriod === true || body.endAccess === true;
   if (!paymentId) return jsonResponse({ error: "payment_id_required" }, 400);
 
   let rows;
@@ -661,56 +730,197 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
 
   const now = new Date();
   const refundedTotal = alreadyCancelled + amount;
+  const fullRefund = refundedTotal >= total;
   try {
     await firestorePatchDoc(env, `payments/${record.id}`, {
-      status: refundedTotal >= total ? "refunded" : "partial_refunded",
+      status: fullRefund ? "refunded" : "partial_refunded",
       refunded_amount: refundedTotal,
       refund_reason: reason,
       refunded_by: adminLabel,
       refunded_at: now,
+      // 전액 환불인데 이용 기간은 유지하는 경우: 장부가 이 결제의 기간을 계속 인정하도록 표시한다.
+      ...(fullRefund && !revoke ? { period_kept: true } : {}),
     });
   } catch (e) {
     console.error("admin_refund_record_failed", paymentId, e);
   }
 
+  let periodRevoked = false;
   let accessEnded = false;
-  if (endAccess && record.uid) {
+  if (revoke && record.uid && PLAN_MONTHS[record.plan]) {
     try {
       const userDoc = await firestoreGetDoc(env, `users/${record.uid}`);
-      const patch = {
-        subscription_status: "canceled",
-        cancel_at_period_end: false,
-        auto_renew: false,
-        next_billing_at: null,
-        annual_starts_at: null,
-        billing_key: null,
-        card_brand: null,
-        card_name: null,
-        card_number: null,
-        card_issuer: null,
-        pending_plan: null,
-        last_one_time_payment_id: null,
-        last_one_time_paid_at: null,
-        last_one_time_period_start: null,
-        annual_cancel_requested_at: null,
-        last_refunded_payment_id: paymentId,
-      };
-      if (userDoc && userDoc.billing_key) {
-        try {
-          await deleteBillingKey(env, userDoc.billing_key);
-        } catch (e) {
-          console.error("admin_refund_delete_billing_key_failed", record.uid, e);
-        }
+      if (userDoc) {
+        const r = await revokeUserPeriod(env, record.uid, userDoc, record, 0, now);
+        periodRevoked = !!r.ok;
+        accessEnded = !!(r.ok && r.ended);
       }
-      await firestorePatchDoc(env, `users/${record.uid}`, patch);
-      accessEnded = true;
     } catch (e) {
       console.error("admin_refund_user_update_failed", record.uid, paymentId, e);
     }
   }
 
-  console.log("admin_refund_done", adminLabel, paymentId, amount, endAccess);
-  return jsonResponse({ ok: true, refundedAmount: amount, refundedTotal, fullyRefunded: refundedTotal >= total, accessEnded });
+  console.log("admin_refund_done", adminLabel, paymentId, amount, revoke);
+  return jsonResponse({ ok: true, refundedAmount: amount, refundedTotal, fullyRefunded: fullRefund, periodRevoked, accessEnded });
+}
+
+// ---- 관리자 수동 결제 등록/삭제 ----
+// 계좌이체 등 카드 외 결제를 기록하고 이용 기간을 부여한다(등록). 새 기간은 기존 만료일 뒤에 이어 붙고(시작일을
+// 직접 지정하면 그 날짜), 삭제하면 그 결제가 준 기간을 회수한다. 카드(포트원) 결제 기록은 여기서 지우지 못한다 --
+// 카드 결제는 결제취소로만 정리한다. 날짜는 한국 시간(KST) 기준.
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const MANUAL_METHODS = ["계좌이체", "카드", "기타"];
+
+function parseKstDate(str) {
+  if (typeof str !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+  const d = new Date(`${str}T00:00:00+09:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function kstDateString(d) {
+  return new Date(d.getTime() + KST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+export async function handleAdminManual(request, env, verifyFirebaseIdToken) {
+  return withAdminCors(request, () => adminManualInner(request, env, verifyFirebaseIdToken));
+}
+
+async function adminManualInner(request, env, verifyFirebaseIdToken) {
+  const { error, adminLabel } = await requireAdmin(request, env, verifyFirebaseIdToken);
+  if (error) return error;
+
+  let body = {};
+  try {
+    body = (await request.json()) || {};
+  } catch (e) {
+    return jsonResponse({ error: "bad_request" }, 400);
+  }
+  if (body.action === "create") return adminManualCreate(env, body, adminLabel);
+  if (body.action === "delete") return adminManualDelete(env, body, adminLabel);
+  return jsonResponse({ error: "invalid_action" }, 400);
+}
+
+async function adminManualCreate(env, body, adminLabel) {
+  const uid = typeof body.uid === "string" ? body.uid : "";
+  const plan = body.plan;
+  const amount = Number(body.amount);
+  const method = body.method;
+  const memo = typeof body.memo === "string" ? body.memo.trim().slice(0, 200) : "";
+  const paidAt = parseKstDate(body.paidAt);
+  if (!uid || !PLAN_MONTHS[plan] || !Number.isInteger(amount) || amount <= 0 || amount > 10000000 || !MANUAL_METHODS.includes(method) || !paidAt) {
+    return jsonResponse({ error: "invalid_params" }, 400);
+  }
+  const startInput = body.startDate ? parseKstDate(body.startDate) : null;
+  if (body.startDate && !startInput) return jsonResponse({ error: "invalid_params" }, 400);
+
+  let userDoc;
+  try {
+    userDoc = await firestoreGetDoc(env, `users/${uid}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+  if (!userDoc) return jsonResponse({ error: "user_not_found" }, 404);
+
+  const now = new Date();
+  const { base } = stackStart(userDoc, now);
+  // 시작일을 기본(이어 붙이기) 날짜 그대로 보냈으면 정확한 시각(base)을 쓰고, 다른 날짜면 그 날짜로 고정한다.
+  const pinned = !!(startInput && kstDateString(startInput) !== kstDateString(base));
+  const start = pinned ? startInput : base;
+  const months = PLAN_MONTHS[plan];
+  const end = addMonths(start, months);
+
+  let created;
+  try {
+    created = await firestoreAddDoc(env, "payments", {
+      uid,
+      amount,
+      plan,
+      method,
+      memo: memo || null,
+      status: "paid",
+      paid_at: paidAt,
+      created_at: now,
+      created_by: adminLabel,
+      manual: true,
+      period_start: start,
+      period_end: end,
+      period_months: months,
+      ...(pinned ? { period_start_pinned: true } : {}),
+    });
+  } catch (e) {
+    return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
+  }
+
+  // 이용 권한 반영: 이어 붙인 결과(장부 요약)와 기존 만료일 중 늦은 쪽까지 이용. 자동 갱신 없이 만료일에 끝나도록 저장한다.
+  let rows = [];
+  try {
+    rows = await firestoreQuery(env, "payments", "uid", "EQUAL", uid);
+  } catch (e) {
+    console.error("manual_ledger_lookup_failed", uid, e);
+  }
+  const entries = rows.map((r) => toLedgerEntry(r)).filter(Boolean);
+  const summary = summarizeLedger(entries, now);
+  const oldExpiry = userDoc.subscription_status === "active" && userDoc.next_billing_at && userDoc.next_billing_at.getTime && userDoc.next_billing_at.getTime() > now.getTime() ? userDoc.next_billing_at : null;
+  const expiresAt = oldExpiry && oldExpiry.getTime() > end.getTime() ? oldExpiry : end;
+  try {
+    await firestorePatchDoc(env, `users/${uid}`, {
+      subscription_status: "active",
+      subscription_plan: summary.empty ? plan : summary.plan,
+      payment_type: "one_time",
+      billing_key: null,
+      auto_renew: false,
+      cancel_at_period_end: true,
+      pending_plan: null,
+      next_billing_at: expiresAt,
+      annual_starts_at: summary.empty ? null : summary.annualStartsAt,
+    });
+  } catch (e) {
+    console.error("manual_user_update_failed", uid, e);
+    return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
+  }
+  if (userDoc.billing_key) {
+    try {
+      await deleteBillingKey(env, userDoc.billing_key);
+    } catch (e) {
+      console.error("manual_delete_billing_key_failed", uid, e);
+    }
+  }
+  console.log("admin_manual_create", adminLabel, uid, plan, amount);
+  return jsonResponse({ ok: true, paymentDocId: created.id, periodStart: start, periodEnd: end, expiresAt });
+}
+
+async function adminManualDelete(env, body, adminLabel) {
+  const docId = typeof body.paymentDocId === "string" ? body.paymentDocId : "";
+  if (!docId) return jsonResponse({ error: "invalid_params" }, 400);
+  let row;
+  try {
+    row = await firestoreGetDoc(env, `payments/${docId}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_lookup_failed", detail: String(e.message || e) }, 500);
+  }
+  if (!row) return jsonResponse({ error: "payment_record_not_found" }, 404);
+  if (row.payment_id) return jsonResponse({ error: "card_payment_not_deletable" }, 400);
+
+  let periodAdjusted = false;
+  if (row.uid && toLedgerEntry(row)) {
+    try {
+      const userDoc = await firestoreGetDoc(env, `users/${row.uid}`);
+      if (userDoc) {
+        const r = await revokeUserPeriod(env, row.uid, userDoc, row, 0, new Date());
+        periodAdjusted = !!r.ok;
+      }
+    } catch (e) {
+      console.error("manual_delete_revoke_failed", row.uid, docId, e);
+      return jsonResponse({ error: "period_update_failed", detail: String(e.message || e) }, 500);
+    }
+  }
+  try {
+    await firestoreDeleteDoc(env, `payments/${docId}`);
+  } catch (e) {
+    return jsonResponse({ error: "firestore_delete_failed", detail: String(e.message || e) }, 500);
+  }
+  console.log("admin_manual_delete", adminLabel, docId, periodAdjusted);
+  return jsonResponse({ ok: true, periodAdjusted });
 }
 
 // 구독 해지 -- 즉시 끊지 않고, 이미 결제한 기간(next_billing_at)까지는 계속
@@ -977,6 +1187,9 @@ export async function handlePaymentsRoute(request, env, url, verifyFirebaseIdTok
   if (url.pathname === "/api/payments/admin-refund" && (request.method === "POST" || request.method === "OPTIONS")) {
     return handleAdminRefund(request, env, verifyFirebaseIdToken);
   }
+  if (url.pathname === "/api/payments/admin-manual" && (request.method === "POST" || request.method === "OPTIONS")) {
+    return handleAdminManual(request, env, verifyFirebaseIdToken);
+  }
   if (url.pathname === "/api/payments/subscribe" && request.method === "POST") {
     return handleSubscribe(request, env, verifyFirebaseIdToken);
   }
@@ -1084,6 +1297,7 @@ export async function runScheduledBilling(env) {
           created_at: chargedAt,
           period_start: chargedAt,
           period_end: nextBillingAt,
+          period_months: planInfo.periodMonths,
           created_by: "portone-cron",
           payment_id: paymentId,
           ...(cardInfo || {}),

@@ -332,3 +332,13 @@ export async function firestoreQueryDueCancellation(env, nowDate, limit) {
       ...decodeFields(r.document.fields || {}),
     }));
 }
+
+// 문서 삭제. 이미 없으면(404) 성공으로 본다.
+export async function firestoreDeleteDoc(env, path) {
+  const token = await getGoogleAccessToken(env);
+  const res = await fetch(`${docBaseUrl(env)}/${path}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 404) throw new Error("firestore_delete_failed: " + (await res.text()));
+}
