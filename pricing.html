@@ -58,16 +58,11 @@
 <section>
   <div class="wrap">
 
-    <!-- 결제 주기 토글 -->
-    <div class="billing-toggle" role="tablist" aria-label="결제 주기">
-      <button type="button" class="bt-opt active" role="tab" aria-selected="true" data-period="monthly" id="periodMonthly">월간</button>
-      <button type="button" class="bt-opt" role="tab" aria-selected="false" data-period="annual" id="periodAnnual">연간 <span class="bt-save">8,000원 절약</span></button>
-    </div>
 
     <div class="plan-grid" data-period="monthly" id="planGrid">
       <!-- 무료 -->
       <div class="plan-card">
-        <div class="plan-name">무료</div>
+        <div class="plan-head"><div class="plan-name">무료</div></div>
         <div class="plan-price"><span class="amt">₩0</span></div>
         <div class="plan-price-sub">기억숲 로컬 앱 · 계속 무료</div>
         <a href="signup.html" class="btn btn-outline" id="freeStartBtn">무료로 시작하기</a>
@@ -88,7 +83,12 @@
 
       <!-- 구독(유료) -->
       <div class="plan-card plan-card-accent">
-        <div class="plan-name">구독</div>
+        <div class="plan-head"><div class="plan-name">유료구독</div>
+          <div class="billing-toggle" role="tablist" aria-label="결제 주기">
+            <button type="button" class="bt-opt active" role="tab" aria-selected="true" data-period="monthly" id="periodMonthly">월간</button>
+            <button type="button" class="bt-opt" role="tab" aria-selected="false" data-period="annual" id="periodAnnual">연간</button>
+          </div>
+        </div>
 
         <div class="plan-price" data-for="monthly"><span class="amt">3,000원</span><span class="per"> / 월</span></div>
         <div class="plan-price-sub" data-for="monthly">매달 자동 결제 · 언제든 해지</div>
@@ -109,11 +109,11 @@
           <li class="f diff"><span class="mk">✓</span><span class="tx">인생챕터 <b>외부 공유</b> (링크)</span></li>
           <li class="f same"><span class="mk">✓</span></li>
           <li class="f same"><span class="mk">✓</span></li>
-          <li class="f diff"><span class="mk">✓</span><span class="tx">폰 앱 <b>자동(백그라운드) 동기화</b> <span class="soon">준비 중</span></span></li>
+          <li class="f diff"><span class="mk">✓</span><span class="tx">폰 앱 <b>자동(백그라운드) 동기화</b></span></li>
         </ul>
       </div>
     </div>
-    <p class="plan-legend"><i class="lg-swatch"></i>색이 들어간 줄이 구독에서 달라지는 기능이에요.</p>
+    <p class="plan-legend"><i class="lg-swatch"></i>색이 들어간 줄이 유료구독에서 달라지는 기능이에요.</p>
 
     <!-- 구독 안내 -->
     <h2 class="pricing-h2">구독 안내</h2>
