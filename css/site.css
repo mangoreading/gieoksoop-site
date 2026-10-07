@@ -372,6 +372,33 @@ form.signup button:hover{background:var(--accent-strong);}
 .plan-feats li::before{content:"\2713";position:absolute;left:2px;top:5px;color:var(--accent-strong);font-weight:700;}
 .plan-feats b{color:var(--ink);}
 .soon{display:inline-block;font-size:11px;font-weight:700;color:var(--ink-faint);border:1px solid var(--border);border-radius:999px;padding:0 7px;margin-left:4px;vertical-align:1px;background:var(--surface);}
+
+/* 무료/구독 카드: 기능 줄을 앱 메뉴 순서대로 두 카드가 같은 줄에 맞춰 보여준다 */
+.plan-feats li.f{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;margin:0;border-top:1px solid var(--border);}
+.plan-feats li.f::before{content:none;}
+.plan-feats li.f .mk{flex:0 0 16px;font-weight:700;color:var(--ink);text-align:center;line-height:1.55;}
+.plan-feats li.f .tx{flex:1;min-width:0;}
+.plan-feats li.f .sub{display:block;font-size:12px;color:var(--ink-faint);margin-top:1px;}
+.plan-feats li.f.same .mk{color:var(--ink-faint);font-weight:400;}
+.plan-card-accent .plan-feats li.f.same .mk{color:rgba(92,83,70,.45);}
+.plan-feats li.f.diff{background:rgba(203,107,69,.13);border-top-color:rgba(203,107,69,.25);}
+.plan-feats li.f.diff .mk{color:var(--accent-strong);}
+.plan-feats li.f.none .mk{color:var(--ink-faint);font-weight:400;}
+.plan-feats li.f.none .tx{color:var(--ink-faint);}
+.plan-legend{max-width:760px;margin:14px auto 52px;text-align:center;font-size:12.5px;color:var(--ink-faint);}
+.lg-swatch{display:inline-block;width:14px;height:10px;border-radius:3px;background:rgba(203,107,69,.25);margin-right:6px;vertical-align:-1px;}
+@media (min-width:721px){
+  .plan-grid{row-gap:0;margin-bottom:0;}
+  .plan-card{display:grid;grid-row:span 15;grid-template-rows:subgrid;padding:30px 26px 22px;}
+  .plan-card .plan-feats{display:contents;}
+  .plan-card .plan-feats-head{margin:20px 0 6px;}
+}
+@media (max-width:720px){
+  /* 좁은 화면에서는 두 카드가 위아래로 쌓이므로, 구독 카드는 달라지는 줄만 보여준다 */
+  .plan-card-accent .plan-feats li.f.same{display:none;}
+  .plan-grid{margin-bottom:0;}
+  .plan-legend{margin-bottom:40px;}
+}
 .pricing-h2{font-size:19px;color:var(--navy);text-align:center;margin:0 auto 18px;}
 .info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:760px;margin:0 auto;}
 .info-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px 22px;}
