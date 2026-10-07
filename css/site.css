@@ -646,14 +646,14 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 .mk-title small{font-size:11.5px;color:var(--ink-faint);font-weight:500;}
 
 .ph{border-radius:8px;min-height:44px;background:#e8dbc0;}
-.ph1{background:radial-gradient(circle at 72% 28%,#fff1c4 0 9%,transparent 10%),linear-gradient(180deg,#f4c991 0%,#e2926d 55%,#8d5a5c 100%);}
-.ph2{background:radial-gradient(circle at 25% 26%,#fff6d6 0 8%,transparent 9%),linear-gradient(180deg,#c5e3ee 0 56%,#4f8fa8 56% 100%);}
-.ph3{background:linear-gradient(180deg,#d4e6c4,#6e9d68 62%,#33603f);}
-.ph4{background:linear-gradient(180deg,#c6d2ee,#e8eef9 64%,#ffffff);}
-.ph5{background:linear-gradient(180deg,#2e3a5c,#6c5b8b 68%,#e2a47c);}
-.ph6{background:linear-gradient(135deg,#f2dcb8,#d8a474);}
-.ph7{background:radial-gradient(circle at 30% 62%,#f4b6c2 0 17%,transparent 18%),radial-gradient(circle at 68% 42%,#f8d47c 0 14%,transparent 15%),linear-gradient(180deg,#dcebc8,#9bc488);}
-.ph8{background:linear-gradient(180deg,#f8dea6,#da8d3e 60%,#8b4c2b);}
+.ph1{background:url(../img/demo/sunset.jpg) center/cover no-repeat,radial-gradient(circle at 72% 28%,#fff1c4 0 9%,transparent 10%),linear-gradient(180deg,#f4c991 0%,#e2926d 55%,#8d5a5c 100%);}
+.ph2{background:url(../img/demo/sea.jpg) center/cover no-repeat,radial-gradient(circle at 25% 26%,#fff6d6 0 8%,transparent 9%),linear-gradient(180deg,#c5e3ee 0 56%,#4f8fa8 56% 100%);}
+.ph3{background:url(../img/demo/forest.jpg) center/cover no-repeat,linear-gradient(180deg,#d4e6c4,#6e9d68 62%,#33603f);}
+.ph4{background:url(../img/demo/winter.jpg) center/cover no-repeat,linear-gradient(180deg,#c6d2ee,#e8eef9 64%,#ffffff);}
+.ph5{background:url(../img/demo/night.jpg) center/cover no-repeat,linear-gradient(180deg,#2e3a5c,#6c5b8b 68%,#e2a47c);}
+.ph6{background:url(../img/demo/cafe.jpg) center/cover no-repeat,linear-gradient(135deg,#f2dcb8,#d8a474);}
+.ph7{background:url(../img/demo/blossom.jpg) center/cover no-repeat,radial-gradient(circle at 30% 62%,#f4b6c2 0 17%,transparent 18%),radial-gradient(circle at 68% 42%,#f8d47c 0 14%,transparent 15%),linear-gradient(180deg,#dcebc8,#9bc488);}
+.ph8{background:url(../img/demo/autumn.jpg) center/cover no-repeat,linear-gradient(180deg,#f8dea6,#da8d3e 60%,#8b4c2b);}
 
 /* 타임라인 목업 */
 .mk-ev{display:grid;grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;}
@@ -771,3 +771,6 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 .lp-pain div,.lp-why,.lp-why h3,.lp-why p,.lp-feat,.lp-feat h3,.lp-feat p,.lp-bridge,.mk,.step h3,.step p,.lp-final,.lp-faq{word-break:keep-all;}
 
 .section-title,.section-sub{word-break:keep-all;}
+
+.lp-shot{border:1px solid var(--border);border-radius:16px;overflow:hidden;background:var(--bg);box-shadow:0 2px 4px rgba(70,52,25,.06),0 30px 70px rgba(70,52,25,.16);}
+.lp-shot img{display:block;width:100%;height:auto;}

@@ -7,3 +7,6 @@ package.json
 package-lock.json
 firestore.rules
 브랜드-본질-홈페이지-레퍼런스.md
+
+# 데모 이미지 작업물(개인 캡처 포함 가능) — 배포 금지
+img/demo/_*
