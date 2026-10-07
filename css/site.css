@@ -528,3 +528,4 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 .sub-table td.nowrap{white-space:nowrap;}
 .sub-table .muted-note{color:var(--ink-faint);font-size:12px;}
 @media (max-width:480px){.sub-info{grid-template-columns:92px 1fr;}.sub-block{padding:14px;}}
+.sub-info dd .sub-inline-btn{margin-left:8px;padding:2px 10px;font-size:12px;vertical-align:baseline;}

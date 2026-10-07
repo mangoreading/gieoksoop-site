@@ -11,7 +11,7 @@
 // - runScheduledBilling(env)     : Cloudflare Cron Trigger에서 매시간 호출 — 다음 결제일이
 //   지난 구독자를 찾아 저장해둔 빌링키로 자동으로 재결제하고, 실패하면 정해진 간격으로 재시도한다(index.js의 scheduled 핸들러 참고).
 
-import { payWithBillingKey, getPayment, cancelPayment, deleteBillingKey, verifyPortOneWebhook } from "./portone.js";
+import { payWithBillingKey, getPayment, getBillingKey, cancelPayment, deleteBillingKey, verifyPortOneWebhook } from "./portone.js";
 import {
   firestoreGetDoc,
   firestorePatchDoc,
@@ -51,6 +51,26 @@ function extractCardInfo(payment) {
     }
   } catch (e) {
     console.error("extract_card_info_failed", e);
+  }
+  return null;
+}
+
+// 포트원 빌링키 조회(getBillingKey) 응답에서 등록된 카드 정보를 뽑아낸다(결제 상세의 extractCardInfo와 같은 필드).
+function extractBillingKeyCardInfo(info) {
+  try {
+    const methods = (info && Array.isArray(info.methods) && info.methods) || [];
+    const m = methods.find((x) => x && x.card);
+    if (m) {
+      const card = m.card;
+      return {
+        card_brand: card.brand || null,
+        card_name: card.name || null,
+        card_number: card.number || null,
+        card_issuer: card.issuer || null,
+      };
+    }
+  } catch (e) {
+    console.error("extract_billing_key_card_info_failed", e);
   }
   return null;
 }
@@ -1037,6 +1057,30 @@ export async function handleUpdateCard(request, env, verifyFirebaseIdToken) {
     return jsonResponse({ error: "not_active_subscription" }, 400);
   }
 
+  // 새 빌링키 확인: 정상 발급 상태인지, 이 사용자 이름으로 발급된 키인지 확인하고 카드 정보(마스킹)를 읽어 저장한다.
+  // (카드 변경에는 결제가 없어서 결제 상세에서 카드 정보를 얻을 수 없다.)
+  let keyInfo;
+  try {
+    const lookup = await getBillingKey(env, billingKey);
+    if (!lookup.ok) {
+      console.error("update_card_billing_key_lookup_failed", user.uid, lookup.status, JSON.stringify(lookup.data));
+      return jsonResponse({ error: "billing_key_lookup_failed", detail: lookup.data && (lookup.data.message || lookup.data.type) }, lookup.status === 404 ? 400 : 502);
+    }
+    keyInfo = lookup.data || {};
+  } catch (e) {
+    console.error("update_card_billing_key_lookup_error", user.uid, e);
+    return jsonResponse({ error: "billing_key_lookup_failed", detail: String(e.message || e) }, 502);
+  }
+  if (keyInfo.status && keyInfo.status !== "ISSUED") {
+    return jsonResponse({ error: "billing_key_not_issued", detail: keyInfo.status }, 400);
+  }
+  const ownerId = keyInfo.customer && keyInfo.customer.id;
+  if (ownerId && ownerId !== user.uid) {
+    console.error("update_card_owner_mismatch", user.uid, ownerId);
+    return jsonResponse({ error: "billing_key_owner_mismatch" }, 403);
+  }
+  const newCardInfo = extractBillingKeyCardInfo(keyInfo);
+
   const oldBillingKey = userDoc.billing_key;
   try {
     await firestorePatchDoc(env, `users/${user.uid}`, {
@@ -1047,6 +1091,7 @@ export async function handleUpdateCard(request, env, verifyFirebaseIdToken) {
       card_name: null,
       card_number: null,
       card_issuer: null,
+      ...(newCardInfo || {}),
     });
   } catch (e) {
     return jsonResponse({ error: "firestore_update_failed", detail: String(e.message || e) }, 500);
@@ -1060,7 +1105,7 @@ export async function handleUpdateCard(request, env, verifyFirebaseIdToken) {
     }
   }
 
-  return jsonResponse({ ok: true });
+  return jsonResponse({ ok: true, card_number: (newCardInfo && newCardInfo.card_number) || null });
 }
 
 // 구독 상태 조회(읽기 전용) -- PC 앱 등 클라이언트가 "지금 구독 중인가?"만 가볍게

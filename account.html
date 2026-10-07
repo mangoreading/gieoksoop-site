@@ -592,8 +592,9 @@
       else if (autoRenew) rows.push(['다음 결제일', kstFmt(end)]);
       else rows.push(['이용 만료일', fmtLast(end)]);
       if (!isOneTime) {
+        // 정기결제(자동 갱신 중)일 때만 [변경] 버튼을 붙인다. 카드 정보를 못 읽은 예전 구독자도 행은 보여서 변경할 수 있게 한다.
         const card = describeCard(d).replace('등록된 카드: ', '');
-        if (card) rows.push(['등록된 카드', card]);
+        rows.push(['등록된 카드', card || '카드 정보를 확인하지 못했어요', { changeCard: autoRenew }]);
       }
     }
     return rows;
@@ -601,8 +602,12 @@
 
   function setSubInfo(rows) {
     const el = document.getElementById('subInfo');
-    el.innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+    el.innerHTML = rows
+      .map(([k, v, opt]) => `<dt>${esc(k)}</dt><dd>${esc(v)}${opt && opt.changeCard ? ' <button type="button" class="btn btn-outline btn-sm sub-inline-btn" id="changeCardInlineBtn">변경</button>' : ''}</dd>`)
+      .join('');
     el.style.display = rows.length ? '' : 'none';
+    const changeBtn = document.getElementById('changeCardInlineBtn');
+    if (changeBtn) changeBtn.addEventListener('click', () => startCardChange(changeBtn));
   }
   function setGuide(items) {
     document.getElementById('subGuide').innerHTML = items.map((t) => `<li>${esc(t)}</li>`).join('');
@@ -772,12 +777,8 @@
           ]);
         }
         actionArea.innerHTML = `
-          <button type="button" class="btn btn-outline btn-sm" id="changeCardBtn">카드 변경하기</button>
-          <button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn" style="margin-left:8px;">구독 해지하기</button>
+          <button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn">구독 해지하기</button>
         `;
-        document.getElementById('changeCardBtn').addEventListener('click', () => {
-          startCardChange(document.getElementById('changeCardBtn'));
-        });
         document.getElementById('cancelSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('cancelSubBtn');
           const untilStr = untilOf(subData.next_billing_at);

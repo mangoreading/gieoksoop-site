@@ -57,6 +57,20 @@ export async function cancelPayment(env, paymentId, reason, options = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// 빌링키 정보 조회(카드 변경 시 새 키의 상태·발급 고객·카드 정보 확인용). 카드번호는 마스킹된 값만 내려온다.
+export async function getBillingKey(env, billingKey) {
+  const res = await fetch(`${PORTONE_API_BASE}/billing-keys/${encodeURIComponent(billingKey)}`, {
+    headers: { Authorization: `PortOne ${env.PORTONE_API_SECRET}` },
+  });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (e) {
+    // 본문이 없어도 상태 코드로 판단
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
 export async function deleteBillingKey(env, billingKey) {
   const res = await fetch(`${PORTONE_API_BASE}/billing-keys/${encodeURIComponent(billingKey)}`, {
     method: "DELETE",
