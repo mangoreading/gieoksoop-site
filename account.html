@@ -218,7 +218,7 @@
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { doc, getDoc, updateDoc, collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   import { initLangToggle } from './js/i18n.js';
-  import { showAlert, showConfirm, showRetryableError, setBtnLoading, setPgDim } from './js/dialog.js';
+  import { showAlert, showConfirm, showReceipt, showRetryableError, setBtnLoading, setPgDim } from './js/dialog.js';
 
   watchAuthForNav();
   initAccountMenu();
@@ -723,12 +723,38 @@
       if (canRefund) {
         document.getElementById('refundAnnualBtn').addEventListener('click', async () => {
           const btn = document.getElementById('refundAnnualBtn');
-          const msg = refundCalc.mode === 'prorated'
-            ? `${refundCalc.amount.toLocaleString()}원이 카드로 환불돼요(28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtLast(refundCalc.endsAt)}까지는 계속 이용할 수 있고, 그 이후 연간 이용권이 종료돼요. 취소하시겠어요?`
-            : refundCalc.mode === 'within_7days'
-              ? '28,000원이 카드로 전액 환불되고, 연간 이용권은 바로 종료돼요. 취소하시겠어요?'
-              : '28,000원이 카드로 전액 환불돼요. 이번 연간 결제로 늘어난 이용 기간은 사라지고, 월간 이용 중이었다면 원래 월간 만료일까지만 이용할 수 있어요(월간 자동결제는 다시 시작되지 않아요). 취소하시겠어요?';
-          const confirmed = await showConfirm(msg, { title: '연간 이용권 취소(환불)', okText: '취소하기', danger: true });
+          const rows = [{ k: '결제 금액', v: '28,000원' }];
+          const notes = [
+            '환불은 결제하신 카드로 취소 처리돼요. 카드사에 따라 반영까지 영업일 기준 수일이 걸릴 수 있어요.',
+            '취소한 연간 이용권은 되돌릴 수 없어요. 다시 이용하시려면 새로 결제해야 해요.',
+          ];
+          let lead;
+          if (refundCalc.mode === 'prorated') {
+            lead = '사용한 기간만큼 차감한 금액이 환불돼요.';
+            rows.push({ k: '환불 금액', v: refundCalc.amount.toLocaleString() + '원', strong: true });
+            rows.push({ k: '계산', v: `28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원` });
+            rows.push({ k: '이용 가능 기간', v: '~ ' + fmtLast(refundCalc.endsAt) + ' (사용한 달까지)' });
+            notes.unshift('사용한 달이 끝나면 연간 이용권이 종료돼요.');
+          } else if (refundCalc.mode === 'within_7days') {
+            lead = '결제 후 7일 이내이고 앱을 사용하지 않아 전액 환불돼요.';
+            rows.push({ k: '환불 금액', v: '28,000원 (전액)', strong: true });
+            rows.push({ k: '이용 기간', v: '취소 즉시 종료' });
+          } else {
+            lead = '아직 이용 전이라 전액 환불돼요.';
+            rows.push({ k: '환불 금액', v: '28,000원 (전액)', strong: true });
+            rows.push({ k: '이용 기간', v: '이번 결제로 늘어난 기간이 사라져요' });
+            notes.unshift('월간 이용 중이었다면 원래 월간 만료일까지만 이용할 수 있어요. 월간 자동결제는 다시 시작되지 않아요.');
+          }
+          const confirmed = await showConfirm(lead, {
+            title: '연간 이용권을 취소할까요?',
+            icon: { type: 'warn', glyph: '!' },
+            okText: '취소하기',
+            cancelText: '돌아가기',
+            danger: true,
+            wide: true,
+            summaryRows: rows,
+            notes,
+          });
           if (!confirmed) return;
           await runRefundAnnual(btn, refundCalc.amount);
         });
@@ -758,7 +784,10 @@
             setBtnLoading(btn, false);
             return;
           }
-          await showAlert(`${Number(resData.refundedAmount || 0).toLocaleString()}원 환불이 완료됐어요. 카드사에 따라 취소 내역이 반영되기까지 영업일 기준 수일이 걸릴 수 있어요.`, { title: '환불 완료', icon: { type: 'success', glyph: '✓' } });
+          await showReceipt('연간 이용권 취소와 환불이 완료됐어요.', [
+            { k: '환불 금액', v: Number(resData.refundedAmount || 0).toLocaleString() + '원', strong: true },
+            ...(resData.validUntil ? [{ k: '이용 가능 기간', v: '~ ' + fmtLast(new Date(resData.validUntil)) }] : []),
+          ], { title: '환불 완료', notes: ['카드사에 따라 취소 내역이 반영되기까지 영업일 기준 수일이 걸릴 수 있어요.'], wide: true });
           window.location.reload();
         } catch (e) {
           console.error(e);
@@ -794,11 +823,24 @@
         document.getElementById('cancelSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('cancelSubBtn');
           const untilStr = untilOf(subData.next_billing_at);
-          const confirmed = await showConfirm(
-            (untilStr ? `해지해도 ${untilStr}까지는 계속 이용하실 수 있어요.\n` : '') +
-              '그 이후부터는 자동으로 결제되지 않아요. 정말 해지하시겠어요?',
-            { title: '구독 해지', okText: '해지하기', danger: true }
-          );
+          const confirmed = await showConfirm('해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.', {
+            title: '구독을 해지할까요?',
+            icon: { type: 'warn', glyph: '!' },
+            okText: '해지하기',
+            cancelText: '계속 이용하기',
+            danger: true,
+            wide: true,
+            summaryRows: [
+              { k: '현재 플랜', v: '월간 (월 3,000원)' },
+              ...(untilStr ? [{ k: '이용 가능 기간', v: '~ ' + untilStr, strong: true }] : []),
+              { k: '다음 결제', v: '해지 후 결제되지 않아요' },
+              { k: '환불', v: '결제한 기간은 환불되지 않아요' },
+            ],
+            notes: [
+              '이용 기간 안에는 [구독 유지하기]로 자동결제를 다시 켤 수 있어요.',
+              '이용 기간이 끝나면 무료 플랜으로 전환돼요. 내 컴퓨터의 사진과 분석 결과는 그대로 남아 있어요.',
+            ],
+          });
           if (!confirmed) return;
           await runCancelSubscription(btn, untilStr);
         });
@@ -823,10 +865,10 @@
               setBtnLoading(btn, false);
               return;
             }
-            await showAlert(
-              (untilStr ? `해지 예약이 완료됐어요. ${untilStr}까지는 계속 이용하실 수 있어요.` : '해지 예약이 완료됐어요.'),
-              { title: '해지 완료', icon: { type: 'success', glyph: '✓' } }
-            );
+            await showReceipt('해지 예약이 완료됐어요.', [
+              ...(untilStr ? [{ k: '이용 가능 기간', v: '~ ' + untilStr, strong: true }] : []),
+              { k: '다음 결제', v: '없음 (자동결제 해지)' },
+            ], { title: '해지 완료', notes: ['이용 기간 안에는 언제든 [구독 유지하기]로 자동결제를 다시 켤 수 있어요.'], wide: true });
             window.location.reload();
           } catch (e) {
             console.error(e);

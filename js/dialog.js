@@ -14,6 +14,7 @@ function ensureOverlay() {
       <h3 id="dlgTitle"></h3>
       <p class="desc" id="dlgMessage" style="white-space:pre-line;"></p>
       <div class="summary-box" id="dlgSummary" style="display:none;"></div>
+      <ul class="dlg-notes" id="dlgNotes" style="display:none;"></ul>
       <div class="modal-actions" id="dlgActions"></div>
     </div>`;
   document.body.appendChild(overlayEl);
@@ -39,8 +40,9 @@ export function renderSummaryRows(container, rows) {
   });
 }
 
-function openDialog({ title, message, icon, buttons, summaryRows }) {
+function openDialog({ title, message, icon, buttons, summaryRows, notes, wide }) {
   const overlay = ensureOverlay();
+  overlay.querySelector('.modal-box').style.maxWidth = wide ? '440px' : '380px';
   const iconEl = overlay.querySelector('#dlgIcon');
   if (icon) {
     iconEl.style.display = 'flex';
@@ -57,6 +59,18 @@ function openDialog({ title, message, icon, buttons, summaryRows }) {
     summaryEl.style.display = '';
   } else {
     summaryEl.style.display = 'none';
+  }
+  const notesEl = overlay.querySelector('#dlgNotes');
+  notesEl.innerHTML = '';
+  if (notes && notes.length) {
+    notes.forEach((n) => {
+      const li = document.createElement('li');
+      li.textContent = n;
+      notesEl.appendChild(li);
+    });
+    notesEl.style.display = '';
+  } else {
+    notesEl.style.display = 'none';
   }
   const actions = overlay.querySelector('#dlgActions');
   actions.innerHTML = '';
@@ -103,6 +117,9 @@ export function showConfirm(message, opts = {}) {
     title: opts.title || '확인',
     message,
     icon: opts.icon,
+    summaryRows: opts.summaryRows,
+    notes: opts.notes,
+    wide: opts.wide,
     buttons: [
       { label: opts.cancelText || '취소', className: 'btn btn-outline btn-sm', value: false },
       {
@@ -122,6 +139,8 @@ export function showReceipt(message, summaryRows, opts = {}) {
     message,
     icon: opts.icon || { type: 'success', glyph: '✓' },
     summaryRows,
+    notes: opts.notes,
+    wide: opts.wide,
     buttons: [{ label: opts.okText || '확인', className: 'btn btn-primary btn-sm', value: true }],
   });
 }
