@@ -21,8 +21,9 @@ bucket_name = "gieoksoop-shares"
 [vars]
 FIREBASE_PROJECT_ID = "gieoksoop"
 
-# 정기결제 자동 실행(cron). 매일 00:00 KST(=UTC 15:00 전날)에 한 번 돌면서
-# 다음 결제일이 지난 구독자를 찾아 자동으로 재결제한다. 실행 로직은 src/payments.js의
-# runScheduledBilling(), 호출부는 src/index.js의 scheduled 핸들러.
+# 정기결제 자동 실행(cron). 매시 정각에 돌면서 다음 결제일이 지난 구독자를 찾아 자동으로 재결제한다.
+# 이용 기간·다음 결제일은 한국시간 00:00 단위라 00:00 KST(=UTC 15:00) 실행분이 정기결제를 처리하고,
+# 나머지 시각은 결제 실패 재시도(BILLING_RETRY_DELAYS_HOURS)와 구독 만료 처리를 위한 것이다.
+# 실행 로직은 src/payments.js의 runScheduledBilling(), 호출부는 src/index.js의 scheduled 핸들러.
 [triggers]
-crons = ["0 15 * * *"]
+crons = ["0 * * * *"]

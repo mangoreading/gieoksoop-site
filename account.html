@@ -555,6 +555,9 @@
   }
 
   const tsDate = (ts) => (ts && typeof ts.toDate === 'function' ? ts.toDate() : null);
+  function kstDateTimeLabel(d) {
+    return `${kstFmt(d)} ${pad2(new Date(d.getTime() + KST_MS).getUTCHours())}:00경`;
+  }
   function fmtRange(a, b) { return `${kstFmt(a)} ~ ${fmtLast(b)}`; }
   function untilOf(ts) { return ts && typeof ts.toDate === 'function' ? fmtLast(ts.toDate()) : null; }
 
@@ -584,7 +587,9 @@
     if (status === 'active') {
       const days = Math.ceil((end.getTime() - now.getTime()) / 86400000);
       if (days > 0) rows.push(['남은 기간', `${days}일`]);
-      if (autoRenew) rows.push(['다음 결제일', kstFmt(end)]);
+      const retryAt = tsDate(d.billing_retry_at);
+      if (autoRenew && (Number(d.billing_retry_count) || 0) > 0 && retryAt) rows.push(['다음 결제 시도', kstDateTimeLabel(retryAt)]);
+      else if (autoRenew) rows.push(['다음 결제일', kstFmt(end)]);
       else rows.push(['이용 만료일', fmtLast(end)]);
       if (!isOneTime) {
         const card = describeCard(d).replace('등록된 카드: ', '');
@@ -754,6 +759,18 @@
         pill.className = 'status-pill active';
         // (예전 "다음 결제일부터 전환 예약"은 폐지 -- 남아 있는 pending_plan 값은 무시한다.)
         setGuide(['현재 유료 구독을 이용 중이에요.', '다음 결제일에 자동으로 결제돼요.', '해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.']);
+        if ((Number(subData.billing_retry_count) || 0) > 0) {
+          // 자동결제가 실패해 재시도 대기 중인 상태(그동안 이용은 유지된다).
+          const retryAt = tsDate(subData.billing_retry_at);
+          pill.textContent = '자동결제 실패 (재시도 예정)';
+          pill.className = 'status-pill canceled';
+          setGuide([
+            '자동결제가 실패했어요. 카드 한도·유효기간·잔액을 확인해 주세요.',
+            retryAt ? `${kstDateTimeLabel(retryAt)} 다시 결제를 시도해요.` : '곧 다시 결제를 시도해요.',
+            '카드를 변경하면 새 카드로 곧바로 다시 시도해요.',
+            '재시도에도 계속 실패하면 구독이 종료돼요.',
+          ]);
+        }
         actionArea.innerHTML = `
           <button type="button" class="btn btn-outline btn-sm" id="changeCardBtn">카드 변경하기</button>
           <button type="button" class="btn btn-outline btn-sm" id="cancelSubBtn" style="margin-left:8px;">구독 해지하기</button>
