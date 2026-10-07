@@ -351,6 +351,30 @@ form.signup button:hover{background:var(--accent-strong);}
   .pricing-cards{grid-template-columns:1fr;max-width:340px;}
 }
 .field-hint{margin:6px 0 0;font-size:12px;color:var(--ink-faint);line-height:1.5;}
+/* ---- 결제 확인 화면 ---- */
+.checkout-view{padding:36px 0 64px;}
+.checkout-view .wrap{max-width:860px;}
+.checkout-back{appearance:none;background:none;border:0;font:inherit;font-size:14px;color:var(--ink-dim);cursor:pointer;padding:6px 0;margin:0 0 14px;}
+.checkout-back:hover{color:var(--navy);}
+.checkout-title{font-size:clamp(22px,3.2vw,28px);color:var(--navy);margin:0 0 8px;}
+.checkout-desc{font-size:14.5px;color:var(--ink-dim);margin:0 0 26px;max-width:620px;}
+.checkout-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+.checkout-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:26px 26px 24px;}
+.checkout-card h2{font-size:16px;color:var(--navy);margin:0 0 16px;}
+.checkout-card .summary-box{margin-bottom:14px;}
+.checkout-note{font-size:12.5px;color:var(--ink-faint);line-height:1.6;margin:0;}
+@media (max-width:720px){
+  .checkout-grid{grid-template-columns:1fr;}
+}
+.complete-view .wrap{max-width:520px;}
+.complete-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:40px 32px 30px;text-align:center;}
+.complete-icon{width:56px;height:56px;margin:0 auto 18px;border-radius:50%;background:var(--accent);color:#fff;font-size:28px;line-height:56px;font-weight:700;}
+.complete-title{font-size:22px;color:var(--navy);margin:0 0 8px;}
+.complete-msg{font-size:14.5px;color:var(--ink-dim);margin:0 0 22px;}
+.complete-card .summary-box{text-align:left;margin-bottom:22px;}
+.complete-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.complete-actions .btn{flex:1 1 150px;text-align:center;}
+.complete-note{font-size:12.5px;color:var(--ink-faint);margin:18px 0 0;}
 /* ---- 요금제 페이지(토글 + 무료/구독 카드 + 안내) ---- */
 .plan-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 8px;min-height:34px;}
 .plan-head .plan-name{margin:0;}

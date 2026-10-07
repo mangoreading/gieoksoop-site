@@ -50,6 +50,7 @@
   </div>
 </nav>
 
+<div id="plansView">
 <div class="page-head">
   <h1>사진 정리는 무료로, 더 넓게 쓰고 싶다면 구독으로</h1>
   <p>핵심 기능은 계속 무료로 제공해요. 사진이 많거나 인생챕터를 더 만들고 싶을 때 구독으로 확장하세요.</p>
@@ -151,12 +152,23 @@
     </div>
     <p class="pricing-foot">이용 기간은 한국시간 기준 날짜 단위로 계산돼요. 자세한 내용은 <a href="terms.html" >이용약관</a> · <a href="terms.html#refund">환불 정책</a>을 확인해 주세요.</p>
 
-    <div class="modal-overlay" id="checkoutModalOverlay">
-      <div class="modal-box">
-        <button type="button" class="modal-close" id="checkoutCloseBtn" aria-label="닫기">&times;</button>
-        <h3>구독 확인</h3>
-        <p class="desc" id="checkoutDesc">아래 내용으로 정기결제가 시작돼요. 카드 등록 후 바로 첫 결제가 진행됩니다.</p>
+  </div>
+</section>
+</div><!-- /plansView -->
+
+<section id="checkoutView" class="checkout-view" style="display:none">
+  <div class="wrap">
+    <button type="button" class="checkout-back" id="checkoutCloseBtn">← 요금제로 돌아가기</button>
+    <h1 class="checkout-title">구독 확인</h1>
+    <p class="checkout-desc" id="checkoutDesc">아래 내용으로 정기결제가 시작돼요. 카드 등록 후 바로 첫 결제가 진행됩니다.</p>
+    <div class="checkout-grid">
+      <div class="checkout-card">
+        <h2>주문 내용</h2>
         <div class="summary-box" id="checkoutSummary"></div>
+        <p class="checkout-note">카드 정보는 결제대행사(PG)에서 안전하게 처리되며, 기억숲은 카드번호 전체를 저장하지 않아요.</p>
+      </div>
+      <div class="checkout-card">
+        <h2>결제 정보</h2>
         <div class="form-error" id="checkoutError"></div>
         <form id="checkoutForm">
           <div class="form-field">
@@ -175,6 +187,22 @@
           <button type="submit" class="btn btn-accent btn-block" id="checkoutSubmitBtn">결제하기</button>
         </form>
       </div>
+    </div>
+  </div>
+</section>
+
+<section id="completeView" class="checkout-view complete-view" style="display:none">
+  <div class="wrap">
+    <div class="complete-card">
+      <div class="complete-icon">✓</div>
+      <h1 class="complete-title" id="completeTitle">결제가 완료됐어요</h1>
+      <p class="complete-msg" id="completeMsg"></p>
+      <div class="summary-box" id="completeSummary"></div>
+      <div class="complete-actions">
+        <a class="btn btn-accent" href="account.html?tab=subscription">내 구독 보기</a>
+        <a class="btn btn-outline" href="download.html">앱 다운로드</a>
+      </div>
+      <p class="complete-note">결제 내역은 「내 계정 &gt; 구독관리」에서 언제든 확인할 수 있어요.</p>
     </div>
   </div>
 </section>
@@ -375,10 +403,64 @@
     return '카드사 정책에 따라 결제가 거절됐어요. 다른 카드로 시도하거나 카드사에 문의해 주세요.';
   }
 
-  // 결제 확인 모달 -- 플랜/금액 요약 + 이름/휴대폰 번호 입력 + 약관 동의를 한 화면에서 받는다.
+  // ---- 결제 확인 화면(같은 페이지 안에서 요금제 화면과 전환) ----
+  const plansViewEl = document.getElementById('plansView');
+  const checkoutViewEl = document.getElementById('checkoutView');
+  let checkoutOpen = false;
+  let checkoutBusy = false;       // 결제 진행 중(뒤로 가기로 닫지 않음)
+  let checkoutPushed = false;     // 이 화면을 열면서 브라우저 기록을 한 칸 추가했는지
+  let skipNextPop = false;
+  let checkoutResolve = null;     // 입력 대기 중일 때 취소 처리용
+  let pageReloading = false;
+  let completeShown = false;
+
+
+  // 결제 완료 화면 -- 팝업 대신 같은 페이지 안에서 보여준다. (결제는 이미 끝난 뒤라 화면 표시만 담당)
+  function showCompleteView(title, message, rows) {
+    completeShown = true;
+    document.getElementById('completeTitle').textContent = title;
+    document.getElementById('completeMsg').textContent = message || '';
+    renderSummaryRows(document.getElementById('completeSummary'), rows);
+    plansViewEl.style.display = 'none';
+    checkoutViewEl.style.display = 'none';
+    document.getElementById('completeView').style.display = '';
+    window.scrollTo(0, 0);
+  }
+
+  function reloadPage() { pageReloading = true; window.location.reload(); }
+
+  function showCheckoutView() {
+    checkoutOpen = true;
+    plansViewEl.style.display = 'none';
+    checkoutViewEl.style.display = '';
+    window.scrollTo(0, 0);
+    try { history.pushState({ checkout: 1 }, ''); checkoutPushed = true; } catch (e) { checkoutPushed = false; }
+  }
+  function hideCheckoutView(fromPop) {
+    if (!checkoutOpen || pageReloading) return;
+    checkoutOpen = false;
+    checkoutBusy = false;
+    setBtnLoading(document.getElementById('checkoutSubmitBtn'), false);
+    checkoutViewEl.style.display = 'none';
+    if (!completeShown) plansViewEl.style.display = '';
+    window.scrollTo(0, 0);
+    if (!fromPop && checkoutPushed) { skipNextPop = true; try { history.back(); } catch (e) { skipNextPop = false; } }
+    checkoutPushed = false;
+  }
+  window.addEventListener('popstate', () => {
+    if (skipNextPop) { skipNextPop = false; return; }
+    if (!checkoutOpen) return;
+    if (checkoutBusy) { try { history.pushState({ checkout: 1 }, ''); } catch (e) { /* 무시 */ } return; }
+    const r = checkoutResolve; checkoutResolve = null;
+    checkoutPushed = false;
+    hideCheckoutView(true);
+    if (r) r();
+  });
+
+  // 결제 확인 화면 -- 플랜/금액 요약 + 이름/휴대폰 번호 입력 + 약관 동의를 한 화면에서 받는다.
   // 이미 알고 있는 이름/번호가 있어도, 결제 전 마지막 확인 단계로 매번 띄운다.
   function openCheckoutModal(plan, { fullName, phoneNumber }) {
-    const overlay = document.getElementById('checkoutModalOverlay');
+    
     const form = document.getElementById('checkoutForm');
     const nameInput = document.getElementById('checkoutName');
     const phoneInput = document.getElementById('checkoutPhone');
@@ -413,18 +495,15 @@
     }
 
     return new Promise((resolve) => {
-      function cleanup(result) {
-        overlay.classList.remove('open');
+      function detach() {
         form.removeEventListener('submit', onSubmit);
         closeBtn.removeEventListener('click', onCancel);
-        overlay.removeEventListener('click', onOverlayClick);
-        resolve(result);
       }
       function onCancel() {
-        cleanup(null);
-      }
-      function onOverlayClick(e) {
-        if (e.target === overlay) cleanup(null);
+        detach();
+        checkoutResolve = null;
+        hideCheckoutView();
+        resolve(null);
       }
       function onSubmit(e) {
         e.preventDefault();
@@ -446,12 +525,18 @@
           return;
         }
         errorEl.style.display = 'none';
-        cleanup({ fullName: name, phoneNumber: rawPhone });
+        // 결제 진행 중에는 이 화면을 그대로 유지한다(실패/취소 시 이 화면으로 돌아옴). 화면은 결제 흐름이 끝날 때 닫는다.
+        detach();
+        checkoutResolve = null;
+        checkoutBusy = true;
+        setBtnLoading(submitBtn, true);
+        resolve({ fullName: name, phoneNumber: rawPhone });
       }
+      // 브라우저 뒤로 가기로 닫힌 경우를 위해 취소 콜백을 보관
+      checkoutResolve = () => { detach(); resolve(null); };
       form.addEventListener('submit', onSubmit);
       closeBtn.addEventListener('click', onCancel);
-      overlay.addEventListener('click', onOverlayClick);
-      overlay.classList.add('open');
+      showCheckoutView();
       nameInput.focus();
     });
   }
@@ -653,15 +738,15 @@
       }
       if (subscribeData.warning) {
         await showAlert(subscribeData.warning, { icon: { type: 'success', glyph: '✓' } });
+        reloadPage();
       } else {
         const nextBillingStr = kstFmt(addMonthsKst(kstDayStart(new Date()), PLAN_DISPLAY[plan].months));
-        await showReceipt('구독 결제가 완료됐어요.', [
+        showCompleteView('구독이 시작됐어요', '결제가 정상적으로 완료됐어요. 기억숲을 마음껏 이용해 보세요.', [
           { k: '플랜', v: PLAN_DISPLAY[plan].korean },
           { k: '결제 금액', v: PLAN_DISPLAY[plan].amount.toLocaleString() + '원' },
           { k: '다음 결제일', v: nextBillingStr, strong: true },
-        ], { title: '구독 완료' });
+        ]);
       }
-      window.location.reload();
     } catch (e) {
       console.error(e);
       const retry = await showRetryableError('카드 등록 중 문제가 발생했어요: ' + (e.message || e));
@@ -669,6 +754,7 @@
     } finally {
       setPgDim(false);
       subscribeButtons.forEach((b) => setBtnLoading(b, false));
+      hideCheckoutView();
     }
   }
 
@@ -724,6 +810,7 @@
     } finally {
       setPgDim(false);
       subscribeButtons.forEach((b) => setBtnLoading(b, false));
+      hideCheckoutView();
     }
   }
 
@@ -763,7 +850,7 @@
       const data = await res.json().catch(() => null);
       if (res.ok && data && data.ok) {
         await showAlert('이전에 진행한 연간 결제가 확인되어 이용 기간에 반영했어요.', { title: '결제 확인', icon: { type: 'success', glyph: '✓' } });
-        window.location.reload();
+        reloadPage();
         return true;
       }
     } catch (e) {
@@ -801,13 +888,12 @@
     clearPendingAnnual();
     const expiry = data.expiresAt ? new Date(data.expiresAt) : annualExpiryPreview();
     const monthlyUntil = monthlyActiveUntil();
-    await showReceipt('연간 이용권 결제가 완료됐어요.', [
+    showCompleteView('연간 이용권 결제가 완료됐어요', '이용 기간이 반영됐어요. 기억숲을 마음껏 이용해 보세요.', [
       { k: '플랜', v: '연간 이용권' },
       { k: '결제 금액', v: PLAN_DISPLAY.annual.amount.toLocaleString() + '원' },
       ...(monthlyUntil ? [{ k: '월간 이용', v: '~ ' + fmtLast(monthlyUntil) + ' (자동결제는 종료)' }] : []),
       { k: monthlyUntil ? '연간 이용 (월간 이후)' : '이용 기간', v: '~ ' + fmtLast(expiry), strong: true },
-    ], { title: '결제 완료' });
-    window.location.reload();
+    ]);
   }
 
   // 모바일 등에서 결제창이 리디렉션 방식으로 열렸다가 이 페이지로 돌아온 경우의 마무리.
