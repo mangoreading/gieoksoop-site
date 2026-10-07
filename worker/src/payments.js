@@ -747,8 +747,12 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
   }
   const paymentId = typeof body.paymentId === "string" ? body.paymentId : "";
   const reason = (typeof body.reason === "string" ? body.reason.trim() : "").slice(0, 200) || "관리자 취소";
-  // 이용 기간도 함께 회수할지(기본: 회수 안 함). 예전 클라이언트의 endAccess 이름도 받아준다.
-  const revoke = body.revokePeriod === true || body.endAccess === true;
+  // 이용 기간 처리 방식: "all"(이 결제 기간 전부 회수) | "used"(약관 기준 사용한 달까지만 유지, 연간만 해당) | "none"(그대로 유지).
+  // 예전 클라이언트의 revokePeriod / endAccess(true=전부 회수)도 받아준다.
+  const periodMode = ["all", "used", "none"].includes(body.periodMode)
+    ? body.periodMode
+    : (body.revokePeriod === true || body.endAccess === true ? "all" : "none");
+  const revoke = periodMode !== "none";
   if (!paymentId) return jsonResponse({ error: "payment_id_required" }, 400);
 
   let rows;
@@ -792,6 +796,30 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
   const now = new Date();
   const refundedTotal = alreadyCancelled + amount;
   const fullRefund = refundedTotal >= total;
+
+  // "사용한 달까지만 유지": 약관 기준(computeAnnualRefund)으로 사용 개월 수를 서버에서 계산해 그만큼만 남기고 줄인다.
+  // 이용 시작 전이거나 7일 이내 미사용(전액 환불 대상)이면 남길 기간이 없어 전부 회수와 같다.
+  let keepMonths = 0;
+  let userDocForPeriod = null;
+  if (revoke && record.uid && PLAN_MONTHS[record.plan]) {
+    try {
+      userDocForPeriod = await firestoreGetDoc(env, `users/${record.uid}`);
+    } catch (e) {
+      console.error("admin_refund_user_lookup_failed", record.uid, paymentId, e);
+    }
+    if (periodMode === "used" && userDocForPeriod && record.plan === "annual") {
+      const paidAtDate = record.paid_at && record.paid_at.getTime ? record.paid_at : null;
+      const startDate = record.period_start && record.period_start.getTime ? record.period_start : paidAtDate;
+      if (startDate) {
+        const lastLogin = userDocForPeriod.app_last_login_at && userDocForPeriod.app_last_login_at.getTime ? userDocForPeriod.app_last_login_at : null;
+        const usedAfterPayment = !!(lastLogin && paidAtDate && lastLogin.getTime() > paidAtDate.getTime());
+        const calc = computeAnnualRefund(startDate, now, { paidAt: paidAtDate, featureUsed: usedAfterPayment || !!userDocForPeriod.paid_feature_used_at });
+        if (calc.mode === "prorated") {
+          keepMonths = Math.min(calc.usedMonths, Number(record.period_months) || PLAN_MONTHS.annual);
+        }
+      }
+    }
+  }
   try {
     await firestorePatchDoc(env, `payments/${record.id}`, {
       status: fullRefund ? "refunded" : "partial_refunded",
@@ -799,8 +827,8 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
       refund_reason: reason,
       refunded_by: adminLabel,
       refunded_at: now,
-      // 전액 환불인데 이용 기간은 유지하는 경우: 장부가 이 결제의 기간을 계속 인정하도록 표시한다.
-      ...(fullRefund && !revoke ? { period_kept: true } : {}),
+      // 전액 환불인데 이용 기간(전부 또는 사용한 달까지)을 유지하는 경우: 장부가 이 결제의 기간을 계속 인정하도록 표시한다.
+      ...(fullRefund && (!revoke || keepMonths > 0) ? { period_kept: true } : {}),
     });
   } catch (e) {
     console.error("admin_refund_record_failed", paymentId, e);
@@ -808,21 +836,25 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
 
   let periodRevoked = false;
   let accessEnded = false;
+  let validUntil = null;
   if (revoke && record.uid && PLAN_MONTHS[record.plan]) {
     try {
-      const userDoc = await firestoreGetDoc(env, `users/${record.uid}`);
+      const userDoc = userDocForPeriod || (await firestoreGetDoc(env, `users/${record.uid}`));
       if (userDoc) {
-        const r = await revokeUserPeriod(env, record.uid, userDoc, record, 0, now);
+        // 사용한 달까지 유지하는 경우는 회원 셀프 환불(prorated)과 같이 "그 달에 종료"로 표시한다.
+        const extra = keepMonths > 0 ? { annual_cancel_requested_at: now, cancel_at_period_end: true, auto_renew: false } : {};
+        const r = await revokeUserPeriod(env, record.uid, userDoc, record, keepMonths, now, extra);
         periodRevoked = !!r.ok;
         accessEnded = !!(r.ok && r.ended);
+        validUntil = r.patch && r.patch.next_billing_at ? r.patch.next_billing_at : null;
       }
     } catch (e) {
       console.error("admin_refund_user_update_failed", record.uid, paymentId, e);
     }
   }
 
-  console.log("admin_refund_done", adminLabel, paymentId, amount, revoke);
-  return jsonResponse({ ok: true, refundedAmount: amount, refundedTotal, fullyRefunded: fullRefund, periodRevoked, accessEnded });
+  console.log("admin_refund_done", adminLabel, paymentId, amount, periodMode, keepMonths);
+  return jsonResponse({ ok: true, refundedAmount: amount, refundedTotal, fullyRefunded: fullRefund, periodRevoked, accessEnded, periodMode, keptMonths: keepMonths, validUntil });
 }
 
 // ---- 관리자 수동 결제 등록/삭제 ----
