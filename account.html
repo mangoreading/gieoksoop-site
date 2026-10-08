@@ -479,8 +479,19 @@
         if (retry) return runCardChange({ fullName, phoneNumber }, btn);
         return;
       }
+      // 서버가 users 문서에 저장한 새 카드 정보(카드사·번호)를 다시 읽어 보여준다. 읽기 실패 시 응답의 마스킹 번호만 표시.
+      let newCard = { card_number: data.card_number || null };
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) newCard = snap.data();
+      } catch (e) {
+        console.error(e);
+      }
+      const cardText = newCard.card_number
+        ? `${newCard.card_name || CARD_BRAND_LABEL[newCard.card_brand] || ''} ${newCard.card_number}`.trim()
+        : '';
       await showReceipt('카드가 변경됐어요.', [
-        ...(data.card_number ? [{ k: '새 카드', v: data.card_number, strong: true }] : []),
+        ...(cardText ? [{ k: '새 카드', v: cardText, strong: true }] : []),
         { k: '지금 결제 금액', v: '없음' },
         { k: '결제 시점', v: '다음 결제일부터 새 카드로 자동결제' },
       ], {
