@@ -845,3 +845,6 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 .notice-detail .notice-item img{max-width:100%;height:auto;}
 .notice-detail-actions{padding:20px 0 8px;border-top:1px solid var(--border);margin-top:12px;}
 @media (max-width:560px){.notice-row{flex-direction:column;gap:6px}.notice-row-date{order:-1;padding-top:0}}
+
+/* 공지사항 목록·본문 공통 가로폭 (좌우 여백 포함 720px) */
+.notice-wrap{max-width:720px;}
