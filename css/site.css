@@ -833,3 +833,15 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 .np-more{display:inline-flex;align-items:center;gap:6px;background:var(--navy);color:#fff;font:700 14.5px var(--font);text-decoration:none;padding:11px 20px;border-radius:11px;white-space:nowrap;}
 .np-more:hover{background:var(--blue);}
 @media (max-width:480px){.np-overlay{padding:16px;}.np-text{padding-left:20px;padding-right:20px;}}
+
+/* 공지사항: 목록 행 / 상세 */
+.notice-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:20px 4px;border-bottom:1px solid var(--border);text-decoration:none;color:inherit;transition:background .2s;}
+.notice-row:hover{background:var(--paper);}
+.notice-row-main{min-width:0;}
+.notice-row h2{font-size:16.5px;color:var(--navy);margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.notice-row p{margin:0;color:var(--ink-dim);font-size:14px;line-height:1.55;}
+.notice-row-date{flex:none;font-size:12.5px;color:var(--ink-faint);padding-top:3px;}
+.notice-detail .notice-item{padding-top:8px;border-bottom:none;}
+.notice-detail .notice-item img{max-width:100%;height:auto;}
+.notice-detail-actions{padding:20px 0 8px;border-top:1px solid var(--border);margin-top:12px;}
+@media (max-width:560px){.notice-row{flex-direction:column;gap:6px}.notice-row-date{order:-1;padding-top:0}}
