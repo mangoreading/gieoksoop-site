@@ -27,3 +27,7 @@ FIREBASE_PROJECT_ID = "gieoksoop"
 # 실행 로직은 src/payments.js의 runScheduledBilling(), 호출부는 src/index.js의 scheduled 핸들러.
 [triggers]
 crons = ["0 * * * *"]
+
+# Workers Logs: cron(정기결제) 실행 결과와 오류(billing_query_failed 등)를 대시보드에서 나중에도 볼 수 있게 한다.
+[observability]
+enabled = true
