@@ -413,11 +413,100 @@
   </footer>
 
 <script type="module">
-  import { watchAuthForNav, initAccountMenu } from './js/auth.js';
+  import { watchAuthForNav, initAccountMenu, db } from './js/auth.js';
   import { initLangToggle } from './js/i18n.js';
+  import { collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   watchAuthForNav();
   initAccountMenu();
   initLangToggle();
+
+  // ---- 공지 팝업 ----
+  // 관리자 > 공지사항 관리에서 "홈페이지 접속 시 팝업으로 노출"을 켜고 이미지를 등록한 공지가
+  // 있으면, 홈에 들어왔을 때 그 이미지를 팝업으로 보여준다("자세히 보기" → 공지사항 페이지의 그 공지).
+  //  · 최대 3개까지(고정 공지 우선, 최신순). 노출 종료일이 지났거나 비공개인 공지는 제외.
+  //  · "오늘 하루 보지 않기"는 공지별로 오늘(한국시간) 하루만 숨기고, 닫기만 하면 이번 방문(탭) 동안 다시 안 띄움.
+  (async function noticePopup() {
+    try {
+      try { if (sessionStorage.getItem('gs_np_seen')) return; } catch (e) {}
+      const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+      let hidden = {};
+      try { hidden = JSON.parse(localStorage.getItem('gs_np_hide') || '{}') || {}; } catch (e) {}
+      const snap = await getDocs(query(collection(db, 'notices'), where('popup', '==', true)));
+      const ts = (n) => (n.created_at && n.created_at.toDate ? n.created_at.toDate().getTime() : 0);
+      const items = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((n) => n.published !== false && n.popup_image && (!n.popup_until || n.popup_until >= today) && hidden[n.id] !== today)
+        .sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : ts(b) - ts(a)))
+        .slice(0, 3);
+      if (!items.length) return;
+      try { sessionStorage.setItem('gs_np_seen', '1'); } catch (e) {}
+
+      const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const root = document.createElement('div');
+      root.className = 'np-overlay';
+      root.setAttribute('role', 'dialog');
+      root.setAttribute('aria-modal', 'true');
+      root.setAttribute('aria-label', '공지사항');
+      root.innerHTML = `
+        <div class="np-box">
+          <button type="button" class="np-x" aria-label="닫기">&times;</button>
+          <div class="np-stage">
+            <a class="np-link"><img class="np-img" alt=""></a>
+            ${items.length > 1 ? '<button type="button" class="np-nav np-prev" aria-label="이전 공지">&#8249;</button><button type="button" class="np-nav np-next" aria-label="다음 공지">&#8250;</button>' : ''}
+          </div>
+          ${items.length > 1 ? `<div class="np-dots">${items.map(() => '<i></i>').join('')}</div>` : ''}
+          <div class="np-actions">
+            <button type="button" class="np-skip">오늘 하루 보지 않기</button>
+            <a class="np-more">자세히 보기</a>
+          </div>
+        </div>`;
+      document.body.appendChild(root);
+      const img = root.querySelector('.np-img');
+      const link = root.querySelector('.np-link');
+      const more = root.querySelector('.np-more');
+      const dots = [...root.querySelectorAll('.np-dots i')];
+      let cur = 0;
+      function show(i) {
+        cur = (i + items.length) % items.length;
+        const n = items[cur];
+        img.src = n.popup_image;
+        img.alt = n.title || '공지사항';
+        const href = 'notice.html#' + encodeURIComponent(n.id);
+        link.href = href; more.href = href;
+        dots.forEach((d, k) => d.classList.toggle('on', k === cur));
+      }
+      function close() {
+        document.removeEventListener('keydown', onKey);
+        root.classList.remove('show');
+        document.documentElement.style.overflow = '';
+        setTimeout(() => root.remove(), 200);
+      }
+      function onKey(e) { if (e.key === 'Escape') close(); }
+      root.querySelector('.np-x').addEventListener('click', close);
+      root.addEventListener('click', (e) => { if (e.target === root) close(); });
+      root.querySelector('.np-skip').addEventListener('click', () => {
+        try { hidden[items[cur].id] = today; localStorage.setItem('gs_np_hide', JSON.stringify(hidden)); } catch (e) {}
+        if (items.length > 1) {
+          // 보고 있는 공지만 숨기고, 남은 공지가 있으면 계속 보여준다
+          items.splice(cur, 1);
+          dots[dots.length - 1].remove(); dots.pop();
+          if (items.length === 1) { root.querySelectorAll('.np-nav,.np-dots').forEach((el) => el.remove()); }
+          show(Math.min(cur, items.length - 1));
+        } else {
+          close();
+        }
+      });
+      const prev = root.querySelector('.np-prev'), next = root.querySelector('.np-next');
+      if (prev) prev.addEventListener('click', () => show(cur - 1));
+      if (next) next.addEventListener('click', () => show(cur + 1));
+      document.addEventListener('keydown', onKey);
+      document.documentElement.style.overflow = 'hidden';
+      show(0);
+      img.addEventListener('load', () => requestAnimationFrame(() => root.classList.add('show')), { once: true });
+      img.addEventListener('error', () => root.remove(), { once: true });
+      root.querySelector('.np-more').focus({ preventScroll: true });
+    } catch (e) { /* 공지를 못 불러와도 홈은 그대로 */ }
+  })();
 </script>
 <script src="js/stats.js" defer></script>
 </body>
