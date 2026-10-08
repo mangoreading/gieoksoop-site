@@ -415,14 +415,14 @@
 <script type="module">
   import { watchAuthForNav, initAccountMenu, db } from './js/auth.js';
   import { initLangToggle } from './js/i18n.js';
-  import { collection, getDocs, query, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+  import { collection, getDocs, query, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
   watchAuthForNav();
   initAccountMenu();
   initLangToggle();
 
   // ---- 공지 팝업 ----
-  // 관리자 > 공지사항 관리에서 "홈페이지 접속 시 팝업으로 노출"을 켜고 이미지를 등록한 공지가
-  // 있으면, 홈에 들어왔을 때 그 이미지를 팝업으로 보여준다("자세히 보기" → 공지사항 페이지의 그 공지).
+  // 관리자 > 공지사항 관리에서 "홈페이지에 노출"로 등록한 공지(요약문 필수)는, 홈에 들어왔을 때
+  // 팝업으로 보여준다("자세히 보기" → 공지사항 페이지의 그 공지). 최근 공지 20개 중에서 고른다.
   //  · 이미지를 등록한 공지는 이미지로, 이미지가 없으면 "제목 + 요약문"으로 보여준다.
   //  · 최대 3개까지(고정 공지 우선, 최신순). 노출 종료일이 지났거나 비공개인 공지는 제외.
   //  · "오늘 하루 보지 않기"는 공지별로 오늘(한국시간) 하루만 숨기고, 닫기만 하면 이번 방문(탭) 동안 다시 안 띄움.
@@ -432,11 +432,11 @@
       const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
       let hidden = {};
       try { hidden = JSON.parse(localStorage.getItem('gs_np_hide') || '{}') || {}; } catch (e) {}
-      const snap = await getDocs(query(collection(db, 'notices'), where('popup', '==', true)));
+      const snap = await getDocs(query(collection(db, 'notices'), orderBy('created_at', 'desc'), limit(20)));
       const ts = (n) => (n.created_at && n.created_at.toDate ? n.created_at.toDate().getTime() : 0);
       const items = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((n) => n.published !== false && (n.popup_image || n.summary) && (!n.popup_until || n.popup_until >= today) && hidden[n.id] !== today)
+        .filter((n) => n.published !== false && n.summary && (!n.popup_until || n.popup_until >= today) && hidden[n.id] !== today)
         .sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : ts(b) - ts(a)))
         .slice(0, 3);
       if (!items.length) return;
