@@ -423,6 +423,7 @@
   // ---- 공지 팝업 ----
   // 관리자 > 공지사항 관리에서 "홈페이지 접속 시 팝업으로 노출"을 켜고 이미지를 등록한 공지가
   // 있으면, 홈에 들어왔을 때 그 이미지를 팝업으로 보여준다("자세히 보기" → 공지사항 페이지의 그 공지).
+  //  · 이미지를 등록한 공지는 이미지로, 이미지가 없으면 "제목 + 요약문"으로 보여준다.
   //  · 최대 3개까지(고정 공지 우선, 최신순). 노출 종료일이 지났거나 비공개인 공지는 제외.
   //  · "오늘 하루 보지 않기"는 공지별로 오늘(한국시간) 하루만 숨기고, 닫기만 하면 이번 방문(탭) 동안 다시 안 띄움.
   (async function noticePopup() {
@@ -435,7 +436,7 @@
       const ts = (n) => (n.created_at && n.created_at.toDate ? n.created_at.toDate().getTime() : 0);
       const items = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((n) => n.published !== false && n.popup_image && (!n.popup_until || n.popup_until >= today) && hidden[n.id] !== today)
+        .filter((n) => n.published !== false && (n.popup_image || n.summary) && (!n.popup_until || n.popup_until >= today) && hidden[n.id] !== today)
         .sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : ts(b) - ts(a)))
         .slice(0, 3);
       if (!items.length) return;
@@ -452,6 +453,7 @@
           <button type="button" class="np-x" aria-label="닫기">&times;</button>
           <div class="np-stage">
             <a class="np-link"><img class="np-img" alt=""></a>
+            <a class="np-text"><span class="np-tag">공지</span><strong class="np-title"></strong><p class="np-sum"></p><span class="np-date"></span></a>
             ${items.length > 1 ? '<button type="button" class="np-nav np-prev" aria-label="이전 공지">&#8249;</button><button type="button" class="np-nav np-next" aria-label="다음 공지">&#8250;</button>' : ''}
           </div>
           ${items.length > 1 ? `<div class="np-dots">${items.map(() => '<i></i>').join('')}</div>` : ''}
@@ -463,16 +465,26 @@
       document.body.appendChild(root);
       const img = root.querySelector('.np-img');
       const link = root.querySelector('.np-link');
+      const textCard = root.querySelector('.np-text');
+      const fmtD = (n) => { const d = n.created_at && n.created_at.toDate ? n.created_at.toDate() : null; return d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : ''; };
       const more = root.querySelector('.np-more');
       const dots = [...root.querySelectorAll('.np-dots i')];
       let cur = 0;
       function show(i) {
         cur = (i + items.length) % items.length;
         const n = items[cur];
-        img.src = n.popup_image;
-        img.alt = n.title || '공지사항';
         const href = 'notice.html#' + encodeURIComponent(n.id);
-        link.href = href; more.href = href;
+        link.href = href; textCard.href = href; more.href = href;
+        if (n.popup_image) {
+          img.src = n.popup_image;
+          img.alt = n.title || '공지사항';
+          link.style.display = ''; textCard.style.display = 'none';
+        } else {
+          link.style.display = 'none'; textCard.style.display = 'flex';
+          textCard.querySelector('.np-title').textContent = n.title || '';
+          textCard.querySelector('.np-sum').textContent = n.summary || '';
+          textCard.querySelector('.np-date').textContent = fmtD(n);
+        }
         dots.forEach((d, k) => d.classList.toggle('on', k === cur));
       }
       function close() {
@@ -502,8 +514,12 @@
       document.addEventListener('keydown', onKey);
       document.documentElement.style.overflow = 'hidden';
       show(0);
-      img.addEventListener('load', () => requestAnimationFrame(() => root.classList.add('show')), { once: true });
-      img.addEventListener('error', () => root.remove(), { once: true });
+      if (items[0].popup_image) {
+        img.addEventListener('load', () => requestAnimationFrame(() => root.classList.add('show')), { once: true });
+        img.addEventListener('error', () => root.remove(), { once: true });
+      } else {
+        requestAnimationFrame(() => root.classList.add('show'));
+      }
       root.querySelector('.np-more').focus({ preventScroll: true });
     } catch (e) { /* 공지를 못 불러와도 홈은 그대로 */ }
   })();
