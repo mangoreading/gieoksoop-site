@@ -165,7 +165,6 @@
   // 상세: 공지 하나의 본문 + "공지사항 목록 보기" 버튼
   function renderDetail(n) {
     document.title = `${n.title} — 기억숲 공지사항`;
-    head.style.display = 'none';
     const back = `<a class="btn btn-outline btn-sm notice-back" href="notice.html" data-back>&larr; 공지사항 목록 보기</a>`;
     listEl.innerHTML = `
       <div class="notice-detail">
