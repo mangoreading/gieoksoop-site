@@ -788,9 +788,24 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
     currentCancellableAmount: cancellable,
     requester: "ADMIN",
   });
+  // 카드사(PG) 쪽에서 이미 취소된 거래(예: 테스트 채널 자동 취소, 사용자가 카드사에서 직접 취소)는 포트원이
+  // 여전히 PAID로 보이는데 취소 요청만 PG 오류로 돌아온다. 이 경우 관리자가 "기록만 반영"을 명시적으로 확인하면
+  // (confirmPgAlreadyCancelled) 우리 결제 기록·이용 기간만 취소 처리한다. PG 오류가 아닌 실패(권한·금액 등)에는 적용하지 않는다.
+  let pgSyncedOnly = false;
   if (!cancel.ok) {
-    console.error("admin_refund_cancel_failed", adminLabel, paymentId, cancel.status, JSON.stringify(cancel.data));
-    return jsonResponse({ error: "portone_cancel_failed", detail: (cancel.data && (cancel.data.message || cancel.data.type || cancel.data.raw)) || `portone_http_${cancel.status}`, portoneStatus: cancel.status }, 502);
+    const errText = JSON.stringify(cancel.data || {});
+    const pgSideFailure = cancel.status >= 500 || /500626|기\s*취소|이미\s*취소|already.?cancel/i.test(errText);
+    console.error("admin_refund_cancel_failed", adminLabel, paymentId, cancel.status, errText);
+    if (pgSideFailure && body.confirmPgAlreadyCancelled === true) {
+      pgSyncedOnly = true;
+    } else {
+      return jsonResponse({
+        error: "portone_cancel_failed",
+        detail: (cancel.data && (cancel.data.message || cancel.data.type || cancel.data.raw)) || `portone_http_${cancel.status}`,
+        portoneStatus: cancel.status,
+        pgMaybeAlreadyCancelled: pgSideFailure,
+      }, 502);
+    }
   }
 
   const now = new Date();
@@ -824,9 +839,10 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
     await firestorePatchDoc(env, `payments/${record.id}`, {
       status: fullRefund ? "refunded" : "partial_refunded",
       refunded_amount: refundedTotal,
-      refund_reason: reason,
+      refund_reason: pgSyncedOnly ? `${reason} (카드사에서 이미 취소된 거래 — 기록만 반영)` : reason,
       refunded_by: adminLabel,
       refunded_at: now,
+      ...(pgSyncedOnly ? { pg_cancel_synced_only: true } : {}),
       // 전액 환불인데 이용 기간(전부 또는 사용한 달까지)을 유지하는 경우: 장부가 이 결제의 기간을 계속 인정하도록 표시한다.
       ...(fullRefund && (!revoke || keepMonths > 0) ? { period_kept: true } : {}),
     });
@@ -853,8 +869,8 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
     }
   }
 
-  console.log("admin_refund_done", adminLabel, paymentId, amount, periodMode, keepMonths);
-  return jsonResponse({ ok: true, refundedAmount: amount, refundedTotal, fullyRefunded: fullRefund, periodRevoked, accessEnded, periodMode, keptMonths: keepMonths, validUntil });
+  console.log("admin_refund_done", adminLabel, paymentId, amount, periodMode, keepMonths, pgSyncedOnly ? "pg_synced_only" : "");
+  return jsonResponse({ ok: true, refundedAmount: amount, refundedTotal, fullyRefunded: fullRefund, periodRevoked, accessEnded, periodMode, keptMonths: keepMonths, validUntil, pgSyncedOnly });
 }
 
 // ---- 관리자 수동 결제 등록/삭제 ----
