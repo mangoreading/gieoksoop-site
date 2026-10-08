@@ -632,7 +632,7 @@
             const exp = annualExpiryDate();
             muted('월간 이용 중이에요' + (exp ? ' (' + fmtLast(exp) + '까지)' : ''));
           } else {
-            btn.textContent = '연간 이용권으로 바꾸기 (28,000원)';
+            btn.textContent = '연간 이용권으로 바꾸기';
           }
           return;
         }
@@ -664,7 +664,7 @@
       // 이하: 월간 정기결제 이용 중
       const autoRenew = currentSub.auto_renew !== false;
       if (plan === 'annual') {
-        btn.textContent = '연간 이용권으로 바꾸기 (28,000원)';
+        btn.textContent = '연간 이용권으로 바꾸기';
         return;
       }
       muted(autoRenew ? '이용 중인 플랜이에요' : '해지 예약 중이에요');
