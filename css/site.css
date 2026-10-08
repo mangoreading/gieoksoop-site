@@ -818,6 +818,9 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 .np-x{margin-left:auto;width:32px;height:32px;border:none;background:none;border-radius:50%;color:var(--ink-faint);font-size:24px;line-height:1;cursor:pointer;padding:0;}
 .np-x:hover{background:var(--paper);color:var(--ink-dim);}
 .np-stage{min-height:0;overflow-y:auto;}
+.np-stage.np-fade{animation:npFade .35s ease;}
+@keyframes npFade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.np-stage.np-fade{animation:none}}
 .np-link{display:block;line-height:0;}
 .np-img{display:block;width:100%;height:auto;max-height:64vh;object-fit:contain;background:var(--paper);}
 .np-stage a.np-text{display:none;flex-direction:column;gap:8px;padding:4px 24px 28px;text-decoration:none;color:inherit;line-height:1.5;}
