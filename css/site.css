@@ -405,7 +405,7 @@ form.signup button:hover{background:var(--accent-strong);}
 /* 무료/구독 카드: 기능 줄을 앱 메뉴 순서대로 두 카드가 같은 줄에 맞춰 보여준다 */
 .plan-feats li.f{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;margin:0;border-top:1px solid var(--border);}
 .plan-feats li.f::before{content:none;}
-.plan-feats li.f .mk{flex:0 0 16px;font-weight:700;color:var(--ink);text-align:center;line-height:1.55;}
+.plan-feats li.f .mk{flex:0 0 16px;font-weight:700;color:var(--ink);text-align:center;line-height:1.55;background:none;border:0;border-radius:0;box-shadow:none;overflow:visible;font-size:inherit;pointer-events:auto;user-select:auto;}
 .plan-feats li.f .tx{flex:1;min-width:0;}
 .plan-feats li.f .sub{display:block;font-size:12px;color:var(--ink-faint);margin-top:1px;}
 .plan-feats li.f.same .mk{color:var(--ink-faint);font-weight:400;}
