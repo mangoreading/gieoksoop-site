@@ -48,11 +48,14 @@ export async function cancelPayment(env, paymentId, reason, options = {}) {
       ...(options.currentCancellableAmount != null ? { currentCancellableAmount: options.currentCancellableAmount } : {}),
     }),
   });
+  // 응답이 JSON이 아니거나 비어 있어도 원인을 알 수 있도록 원문 일부를 남긴다(오류 진단용).
   let data = null;
+  let rawText = "";
   try {
-    data = await res.json();
+    rawText = await res.text();
+    data = rawText ? JSON.parse(rawText) : null;
   } catch (e) {
-    // 응답 본문이 없어도 상태 코드로 판단
+    data = rawText ? { raw: rawText.slice(0, 300) } : null;
   }
   return { ok: res.ok, status: res.status, data };
 }

@@ -549,7 +549,7 @@ export async function handleRefund(request, env, verifyFirebaseIdToken) {
   });
   if (!cancel.ok) {
     console.error("refund_cancel_failed", uid, paymentId, cancel.status, JSON.stringify(cancel.data));
-    return jsonResponse({ error: "portone_cancel_failed", detail: cancel.data && (cancel.data.message || cancel.data.type) }, 502);
+    return jsonResponse({ error: "portone_cancel_failed", detail: (cancel.data && (cancel.data.message || cancel.data.type || cancel.data.raw)) || `portone_http_${cancel.status}`, portoneStatus: cancel.status }, 502);
   }
 
   // 이용 기간 정리. 환불은 이미 성공했으므로 여기서 실패해도 사용자에겐 환불 성공으로 알리고 로그만 남긴다.
@@ -790,7 +790,7 @@ async function adminRefundInner(request, env, verifyFirebaseIdToken) {
   });
   if (!cancel.ok) {
     console.error("admin_refund_cancel_failed", adminLabel, paymentId, cancel.status, JSON.stringify(cancel.data));
-    return jsonResponse({ error: "portone_cancel_failed", detail: cancel.data && (cancel.data.message || cancel.data.type) }, 502);
+    return jsonResponse({ error: "portone_cancel_failed", detail: (cancel.data && (cancel.data.message || cancel.data.type || cancel.data.raw)) || `portone_http_${cancel.status}`, portoneStatus: cancel.status }, 502);
   }
 
   const now = new Date();
