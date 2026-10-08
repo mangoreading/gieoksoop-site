@@ -149,8 +149,9 @@
     <div class="modal-overlay" id="customerInfoModalOverlay">
       <div class="modal-box">
         <button type="button" class="modal-close" id="customerInfoCloseBtn" aria-label="닫기">&times;</button>
-        <h3>결제 정보 확인</h3>
-        <p class="desc">카드 변경에 필요한 이름과 휴대폰 번호예요. 필요하면 수정할 수 있어요.</p>
+        <h3>카드 변경</h3>
+        <p class="desc">새 카드를 등록하기 전에 카드 등록에 필요한 이름과 휴대폰 번호를 확인해 주세요. 필요하면 수정할 수 있어요.</p>
+        <p class="desc" style="margin-top:-6px;font-size:13px;color:var(--ink-faint);">카드를 등록할 때는 결제가 되지 않아요. 다음 결제일부터 새 카드로 자동결제돼요.</p>
         <div class="form-error" id="customerInfoError"></div>
         <form id="customerInfoForm">
           <div class="form-field">
@@ -161,7 +162,7 @@
             <label for="customerInfoPhone">휴대폰 번호</label>
             <input type="tel" id="customerInfoPhone" autocomplete="tel" placeholder="01012345678" required>
           </div>
-          <button type="submit" class="btn btn-outline btn-block" id="customerInfoSubmitBtn">다음</button>
+          <button type="submit" class="btn btn-outline btn-block" id="customerInfoSubmitBtn">새 카드 등록하기</button>
         </form>
       </div>
     </div>
@@ -478,9 +479,14 @@
         if (retry) return runCardChange({ fullName, phoneNumber }, btn);
         return;
       }
-      await showAlert('카드가 변경됐어요. 다음 결제부터 새 카드로 청구됩니다.', {
-        title: '변경 완료',
-        icon: { type: 'success', glyph: '✓' },
+      await showReceipt('카드가 변경됐어요.', [
+        ...(data.card_number ? [{ k: '새 카드', v: data.card_number, strong: true }] : []),
+        { k: '지금 결제 금액', v: '없음' },
+        { k: '결제 시점', v: '다음 결제일부터 새 카드로 자동결제' },
+      ], {
+        title: '카드 변경 완료',
+        notes: ['기존 카드는 더 이상 결제에 사용되지 않아요.'],
+        wide: true,
       });
       window.location.reload();
     } catch (e) {
