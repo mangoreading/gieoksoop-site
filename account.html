@@ -960,7 +960,7 @@
           <tr>
             <td>${fmtDate(p.paid_at)}</td>
             <td class="nowrap">${historyPeriod(p)}</td>
-            <td>${Number(p.amount || 0).toLocaleString()}원</td>
+            <td>${Number(p.amount || 0).toLocaleString()}원${Number(p.refunded_amount) > 0 && (p.status === 'partial_refunded' || p.status === 'refunded') ? `<div style="font-size:12.5px;color:var(--danger);margin-top:2px;">-${Number(p.refunded_amount).toLocaleString()}원</div>` : ''}</td>
             <td>${esc(p.plan === 'annual' ? '연간 이용권' : planLabel(p.plan))}</td>
             <td>${p.status === 'refunded' ? '환불' : p.status === 'partial_refunded' ? '부분환불' : p.status === 'failed' ? '실패' : '완료'}</td>
           </tr>`
