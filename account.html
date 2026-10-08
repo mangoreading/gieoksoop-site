@@ -886,15 +886,28 @@
         actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="resumeSubBtn">구독 유지하기</button>`;
         document.getElementById('resumeSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('resumeSubBtn');
-          const confirmed = await showConfirm('자동 결제를 다시 켤까요? 이후로는 계속 정기 결제가 이뤄져요.', {
-            title: '구독 유지하기',
-            okText: '유지하기',
+          const untilStr = untilOf(subData.next_billing_at);
+          const nextStr = subData.next_billing_at && typeof subData.next_billing_at.toDate === 'function' ? kstFmt(subData.next_billing_at.toDate()) : null;
+          const confirmed = await showConfirm('자동결제를 다시 켜면 구독이 계속 유지돼요.', {
+            title: '구독을 유지할까요?',
+            okText: '구독 유지하기',
+            cancelText: '닫기',
+            wide: true,
+            summaryRows: [
+              { k: '현재 플랜', v: '월간 (월 3,000원)' },
+              ...(nextStr ? [{ k: '다음 결제일', v: nextStr, strong: true }] : []),
+              { k: '결제 방식', v: '등록된 카드로 자동결제' },
+            ],
+            notes: [
+              '지금 결제되는 금액은 없어요. 다음 결제일부터 월 3,000원이 결제돼요.',
+              '언제든 다시 [해지하기]로 자동결제를 끌 수 있어요.',
+            ],
           });
           if (!confirmed) return;
-          await runResumeSubscription(btn);
+          await runResumeSubscription(btn, untilStr, nextStr);
         });
 
-        async function runResumeSubscription(btn) {
+        async function runResumeSubscription(btn, untilStr, nextStr) {
           setBtnLoading(btn, true);
           try {
             const idToken = await user.getIdToken();
@@ -910,16 +923,20 @@
             }
             if (!res.ok || !resData || !resData.ok) {
               const retry = await showRetryableError('처리 중 문제가 발생했어요.');
-              if (retry) return runResumeSubscription(btn);
+              if (retry) return runResumeSubscription(btn, untilStr, nextStr);
               setBtnLoading(btn, false);
               return;
             }
-            await showAlert('구독을 계속 이용하실 수 있어요.', { title: '완료', icon: { type: 'success', glyph: '✓' } });
+            await showReceipt('구독이 유지됐어요. 자동결제가 다시 켜졌어요.', [
+              { k: '현재 플랜', v: '월간 (월 3,000원)' },
+              ...(nextStr ? [{ k: '다음 결제일', v: nextStr, strong: true }] : []),
+              { k: '지금 결제 금액', v: '없음' },
+            ], { title: '구독 유지 완료', notes: ['언제든 [해지하기]로 자동결제를 다시 끌 수 있어요.'], wide: true });
             window.location.reload();
           } catch (e) {
             console.error(e);
             const retry = await showRetryableError('처리 중 문제가 발생했어요: ' + (e.message || e));
-            if (retry) return runResumeSubscription(btn);
+            if (retry) return runResumeSubscription(btn, untilStr, nextStr);
             setBtnLoading(btn, false);
           }
         }
