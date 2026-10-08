@@ -425,10 +425,9 @@
   // 팝업으로 보여준다("자세히 보기" → 공지사항 페이지의 그 공지). 최근 공지 20개 중에서 고른다.
   //  · 이미지를 등록한 공지는 이미지로, 이미지가 없으면 "제목 + 요약문"으로 보여준다.
   //  · 최대 3개까지(고정 공지 우선, 최신순). 노출 종료일이 지났거나 비공개인 공지는 제외.
-  //  · "오늘 하루 보지 않기"는 공지별로 오늘(한국시간) 하루만 숨기고, 닫기만 하면 이번 방문(탭) 동안 다시 안 띄움.
+  //  · "오늘 하루 보지 않기"는 공지별로 오늘(한국시간) 하루만 숨기고, 닫기만 하면 홈에 다시 들어올 때 또 보여준다.
   (async function noticePopup() {
     try {
-      try { if (sessionStorage.getItem('gs_np_seen')) return; } catch (e) {}
       const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
       let hidden = {};
       try { hidden = JSON.parse(localStorage.getItem('gs_np_hide') || '{}') || {}; } catch (e) {}
@@ -440,7 +439,6 @@
         .sort((a, b) => (!!a.pinned !== !!b.pinned ? (a.pinned ? -1 : 1) : ts(b) - ts(a)))
         .slice(0, 3);
       if (!items.length) return;
-      try { sessionStorage.setItem('gs_np_seen', '1'); } catch (e) {}
 
       const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       const root = document.createElement('div');
