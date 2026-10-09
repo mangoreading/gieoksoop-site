@@ -348,7 +348,8 @@
     if (/한도|잔액|insufficient/i.test(msg)) return '카드 한도 또는 잔액을 확인해 주세요.';
     if (/분실|도난|정지|blocked|lost|stolen/i.test(msg)) return '카드사에서 거래를 제한하고 있어요. 카드사에 문의해 주세요.';
     if (/인증/i.test(msg)) return '본인 인증에 실패했어요. 다시 시도해 주세요.';
-    return '카드사 정책에 따라 결제가 거절됐어요. 다른 카드로 시도하거나 카드사에 문의해 주세요.';
+    // 위에서 분류하지 못한 사유는 원문 일부를 함께 보여준다(원인 파악·문의 응대용).
+    return '카드사 정책에 따라 결제가 거절됐어요. 다른 카드로 시도하거나 카드사에 문의해 주세요.' + ' (사유: ' + msg.slice(0, 120) + ')';
   }
 
   function openCustomerInfoModal({ fullName, phoneNumber }) {
