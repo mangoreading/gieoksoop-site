@@ -979,7 +979,8 @@
 
     try {
       const psnap = await getDocs(query(collection(db, 'payments'), where('uid', '==', user.uid)));
-      const list = psnap.docs.map((d) => d.data());
+      // 실패한 자동결제 시도는 결제내역(영수증 성격)에 보이지 않는다. 실패 안내는 구독 상태 블록에서 한다. (관리자 화면에는 그대로 표시)
+      const list = psnap.docs.map((d) => d.data()).filter((p) => p.status !== 'failed');
       list.sort((a, b) => {
         const ta = a.paid_at && a.paid_at.toDate ? a.paid_at.toDate().getTime() : 0;
         const tb = b.paid_at && b.paid_at.toDate ? b.paid_at.toDate().getTime() : 0;
