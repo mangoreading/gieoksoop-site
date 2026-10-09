@@ -358,11 +358,17 @@ form.signup button:hover{background:var(--accent-strong);}
 .checkout-back:hover{color:var(--navy);}
 .checkout-title{font-size:clamp(22px,3.2vw,28px);color:var(--navy);margin:0 0 8px;}
 .checkout-desc{font-size:14.5px;color:var(--ink-dim);margin:0 0 26px;max-width:620px;}
-.checkout-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+.checkout-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:stretch;}
 .checkout-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);padding:26px 26px 24px;}
 .checkout-card h2{font-size:16px;color:var(--navy);margin:0 0 16px;}
 .checkout-card .summary-box{margin-bottom:14px;}
 .checkout-note{font-size:12.5px;color:var(--ink-faint);line-height:1.6;margin:0;}
+/* 좌우 두 카드를 같은 높이로 맞추고, 안내 문구(왼쪽)와 결제 버튼(오른쪽)을 카드 아래쪽에 정렬한다. */
+.checkout-card{display:flex;flex-direction:column;}
+.checkout-card .checkout-note{margin-top:auto;padding-top:6px;}
+.checkout-card #checkoutForm{display:flex;flex-direction:column;flex:1;}
+.checkout-card #checkoutForm .form-check{margin-bottom:18px;}
+.checkout-card #checkoutForm #checkoutSubmitBtn{margin-top:auto;}
 @media (max-width:720px){
   .checkout-grid{grid-template-columns:1fr;}
 }
