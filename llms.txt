@@ -4,7 +4,7 @@
 > (English: Gieoksoop / LIFE ARCHIVE is a desktop app for Windows and macOS that turns scattered photos and videos into a personal life timeline, grouping them by time, place and people. Original photos stay on the user's own computer.)
 
 현재 상태: PC 앱 출시 준비 중. 홈페이지에서 가입하면 출시 소식을 받을 수 있습니다.
-운영: 스콜레에듀케이션 · 문의: support@gieoksoop.com
+운영: 스콜레에듀케이션 · 문의: gieoksoop@gmail.com
 
 ## 무엇을 하나요
 - 자동 정리: 사진 폴더(내 컴퓨터, 외장하드 등)를 연결하면 촬영 시간과 위치를 읽어 사진을 하나의 사건(이벤트) 단위로 묶습니다. 폴더를 미리 정리하거나 파일을 옮길 필요가 없습니다.
