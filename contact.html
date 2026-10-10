@@ -275,7 +275,7 @@
         : '<div class="contact-wait">답변을 준비하고 있어요. 답변이 등록되면 이 화면에 표시돼요.</div>';
       const thumbs = Array.isArray(q.attachments) && q.attachments.length
         ? `<div class="contact-thumbs" data-inq="${esc(q.id)}" data-n="${q.attachments.map((a) => a.n).join(',')}"></div>` : '';
-      return `<details class="contact-item"${q.answer ? ' open' : ''}>
+      return `<details class="contact-item"${sessionNew.has(q.id) ? ' open' : ''}>
         <summary>
           <span class="contact-item-title">${esc(q.title)}${sessionNew.has(q.id) ? '<span class="contact-new">NEW</span>' : ''}</span>
           <span class="contact-item-meta">${esc(CATEGORIES[q.category] || '기타')} · ${fmtDate(q.created_at)}</span>
