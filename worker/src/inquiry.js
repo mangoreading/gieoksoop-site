@@ -184,7 +184,7 @@ async function handleAnswered(request, env, verifyFirebaseIdToken) {
   const to = String(inquiry.email || "").trim();
   if (!to) return jsonResponse({ error: "no_recipient" }, 400);
 
-  const link = `${SITE_URL}/contact.html`;
+  const link = `${SITE_URL}/contact.html#history`;
   const mail = await sendMail(env, {
     to,
     subject: "[기억숲] 문의하신 내용에 답변이 도착했어요",

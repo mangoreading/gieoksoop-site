@@ -63,6 +63,12 @@
     <div id="contactState" class="card contact-state" style="max-width:760px;"><p class="desc" style="margin:0;">불러오는 중...</p></div>
 
     <div id="contactMain" style="display:none;">
+      <div class="contact-tabs" role="tablist" aria-label="문의하기">
+        <button type="button" class="contact-tab active" role="tab" aria-selected="true" id="tabNew" data-tab="new">새 문의 남기기</button>
+        <button type="button" class="contact-tab" role="tab" aria-selected="false" id="tabHistory" data-tab="history">내 문의 내역<span class="tab-badge" id="tabBadge" style="display:none;" aria-hidden="true"></span></button>
+      </div>
+
+      <div id="paneNew" role="tabpanel" aria-labelledby="tabNew">
       <div class="card contact-card" id="faqCard" style="max-width:760px;text-align:left;margin-bottom:24px;display:none;">
         <h2>문의 전에 확인해 보세요</h2>
         <p class="desc" style="margin-bottom:12px;">자주 묻는 질문에서 바로 해결될 수도 있어요. 질문을 눌러 답변을 확인해 보세요.</p>
@@ -71,7 +77,6 @@
       </div>
 
       <div class="card contact-card" style="max-width:760px;text-align:left;">
-        <h2>새 문의 남기기</h2>
         <p class="desc">보내주신 내용은 운영자가 확인하고 답변드려요. 영업일 기준 1~2일 안에 답변드리는 것을 목표로 하고 있어요.</p>
         <div class="form-error" id="cError"></div>
         <div class="form-success" id="cSuccess"></div>
@@ -111,10 +116,13 @@
         </form>
       </div>
 
-      <div class="card contact-card" style="max-width:760px;text-align:left;margin-top:24px;">
-        <h2>내 문의 내역</h2>
+      </div><!-- /paneNew -->
+
+      <div id="paneHistory" role="tabpanel" aria-labelledby="tabHistory" style="display:none;">
+      <div class="card contact-card" style="max-width:760px;text-align:left;">
         <div id="cHistory" class="contact-history"><p class="contact-empty">불러오는 중...</p></div>
       </div>
+      </div><!-- /paneHistory -->
     </div>
   </div>
 </section>
@@ -193,6 +201,44 @@
   let currentUser = null;
   let myInquiries = [];
 
+  // ---- 탭 / 새 답변 표시 ----
+  // 새 답변 = 답변이 등록된 시각이 "마지막으로 내 문의 내역 탭을 연 시각"보다 나중인 문의.
+  // 확인 시각은 이 브라우저(localStorage)에 저장한다.
+  let activeTab = 'new';
+  let seenMs = 0;
+  const sessionNew = new Set();
+  const seenKey = () => 'gs_inq_seen_' + currentUser.uid;
+  function readSeen() { try { return Number(localStorage.getItem(seenKey())) || 0; } catch (e) { return 0; } }
+  function writeSeen(v) { try { localStorage.setItem(seenKey(), String(v)); } catch (e) { /* 저장 실패는 무시 */ } }
+  const answeredMs = (q) => (q.answer && q.answered_at && q.answered_at.toMillis ? q.answered_at.toMillis() : 0);
+  function updateBadge() {
+    const n = myInquiries.filter((q) => answeredMs(q) > seenMs).length;
+    const b = $('tabBadge');
+    b.textContent = n > 99 ? '99+' : String(n);
+    b.style.display = n ? '' : 'none';
+    $('tabHistory').setAttribute('aria-label', n ? '내 문의 내역, 새 답변 ' + n + '건' : '내 문의 내역');
+  }
+  function markSeen() {
+    myInquiries.forEach((q) => { if (answeredMs(q) > seenMs) sessionNew.add(q.id); });
+    const max = myInquiries.reduce((m, q) => Math.max(m, answeredMs(q)), seenMs);
+    seenMs = max;
+    writeSeen(max);
+    updateBadge();
+    renderHistory();
+  }
+  function setTab(name) {
+    activeTab = name;
+    $('paneNew').style.display = name === 'new' ? '' : 'none';
+    $('paneHistory').style.display = name === 'history' ? '' : 'none';
+    document.querySelectorAll('.contact-tab').forEach((t) => {
+      const on = t.getAttribute('data-tab') === name;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    if (name === 'history') markSeen();
+  }
+  document.querySelectorAll('.contact-tab').forEach((t) => t.addEventListener('click', () => setTab(t.getAttribute('data-tab'))));
+
   async function loadHistory() {
     const box = $('cHistory');
     try {
@@ -208,6 +254,13 @@
       const tb = b.created_at && b.created_at.toMillis ? b.created_at.toMillis() : 0;
       return tb - ta;
     });
+    renderHistory();
+    updateBadge();
+    if (activeTab === 'history') markSeen();
+  }
+
+  function renderHistory() {
+    const box = $('cHistory');
     if (myInquiries.length === 0) {
       box.innerHTML = '<p class="contact-empty">아직 남기신 문의가 없어요.</p>';
       return;
@@ -224,7 +277,7 @@
         ? `<div class="contact-thumbs" data-inq="${esc(q.id)}" data-n="${q.attachments.map((a) => a.n).join(',')}"></div>` : '';
       return `<details class="contact-item"${q.answer ? ' open' : ''}>
         <summary>
-          <span class="contact-item-title">${esc(q.title)}</span>
+          <span class="contact-item-title">${esc(q.title)}${sessionNew.has(q.id) ? '<span class="contact-new">NEW</span>' : ''}</span>
           <span class="contact-item-meta">${esc(CATEGORIES[q.category] || '기타')} · ${fmtDate(q.created_at)}</span>
           ${pill}
         </summary>
@@ -520,7 +573,7 @@
       if (attachFailed) {
         showAlert('문의는 접수됐지만 이미지 첨부는 올리지 못했어요. 필요하면 ' + MAIL + ' 으로 이미지를 보내주세요.', { title: '문의가 접수됐어요', icon: { type: 'warn', glyph: '!' }, summaryRows: sentRows });
       } else {
-        showReceipt('문의가 접수됐어요. 답변이 등록되면 이메일로 알려드릴게요. 아래 내 문의 내역에서도 확인할 수 있어요.', sentRows, { title: '문의 접수 완료' });
+        showReceipt('문의가 접수됐어요. 답변이 등록되면 이메일로 알려드릴게요. 「내 문의 내역」 탭에서도 확인할 수 있어요.', sentRows, { title: '문의 접수 완료' });
       }
       await loadHistory();
     } catch (err) {
@@ -544,8 +597,11 @@
     }
     $('contactState').style.display = 'none';
     $('contactMain').style.display = '';
+    seenMs = readSeen();
     loadKnowledge();
+    if (location.hash === '#history') activeTab = 'history';
     await loadHistory();
+    setTab(activeTab);
   });
 </script>
 
