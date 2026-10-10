@@ -374,11 +374,6 @@ form.signup button:hover{background:var(--accent-strong);}
 /* 좌우 두 카드를 같은 높이로 맞추고, 안내 문구(왼쪽)와 결제 버튼(오른쪽)을 카드 아래쪽에 정렬한다. */
 .checkout-card{display:flex;flex-direction:column;}
 .checkout-card .checkout-note{margin-top:auto;padding-top:6px;}
-.trust-list{list-style:none;margin:auto 0 0;padding:14px 0 0;border-top:1px solid var(--border-soft);display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--ink-dim);line-height:1.55;}
-.trust-list li{position:relative;padding-left:20px;}
-.trust-list li::before{content:"";position:absolute;left:2px;top:.45em;width:9px;height:5px;border-left:2px solid var(--ok);border-bottom:2px solid var(--ok);transform:rotate(-45deg);}
-.trust-list b{color:var(--ink);font-weight:600;}
-.trust-list a{text-decoration:underline;text-underline-offset:2px;}
 .checkout-card #checkoutForm{display:flex;flex-direction:column;flex:1;}
 .checkout-card #checkoutForm .form-check{margin-bottom:18px;}
 .checkout-card #checkoutForm #checkoutSubmitBtn{margin-top:auto;}
