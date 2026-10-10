@@ -4,6 +4,7 @@
 // 메타데이터는 Firestore 없이 R2 안의 manifest.json 하나로 관리한다(2026.09.17 결정).
 
 import { handlePaymentsRoute, runScheduledBilling } from "./payments.js";
+import { handleInquiryRoute } from "./inquiry.js";
 
 const FIREBASE_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -466,6 +467,11 @@ export default {
     if (path.startsWith("/api/payments/")) {
       const paymentsResponse = await handlePaymentsRoute(request, env, url, verifyFirebaseIdToken);
       if (paymentsResponse) return paymentsResponse;
+    }
+
+    if (path.startsWith("/api/inquiry/")) {
+      const inquiryResponse = await handleInquiryRoute(request, env, url, verifyFirebaseIdToken);
+      if (inquiryResponse) return inquiryResponse;
     }
 
     if (path === "/api/share/create" && request.method === "POST") {

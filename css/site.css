@@ -854,3 +854,39 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 
 /* 공지사항 목록·본문 공통 가로폭 (좌우 여백 포함 720px) */
 .notice-wrap{max-width:720px;}
+
+/* ---- 문의하기(contact.html) ---- */
+.form-field textarea,
+.form-field select{
+  width:100%;
+  padding:13px 14px;
+  border-radius:var(--radius-md);
+  border:1px solid var(--border);
+  background:var(--bg);
+  font-family:var(--font);
+  font-size:15px;
+  color:var(--ink);
+}
+.form-field textarea{resize:vertical;min-height:140px;line-height:1.6;}
+.form-field textarea:focus,
+.form-field select:focus{outline:2px solid var(--accent);outline-offset:1px;}
+.contact-card h2{font-size:20px;}
+.contact-state{text-align:center;}
+.contact-state .btn{margin-top:6px;}
+.contact-hint{margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--accent-bg);font-size:13px;line-height:1.55;color:var(--ink-dim);}
+.contact-hint a{color:var(--blue);font-weight:600;}
+.contact-count{text-align:right;font-size:12px;color:var(--ink-faint);margin-top:4px;}
+.contact-history{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
+.contact-empty{margin:0;padding:14px 0;text-align:center;color:var(--ink-faint);font-size:14px;}
+.contact-item{border:1px solid var(--border);border-radius:12px;background:var(--surface);}
+.contact-item summary{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;padding:12px 14px;cursor:pointer;list-style:none;}
+.contact-item summary::-webkit-details-marker{display:none;}
+.contact-item-title{font-weight:700;font-size:14.5px;color:var(--navy);word-break:break-all;}
+.contact-item-meta{grid-column:1;font-size:12.5px;color:var(--ink-faint);}
+.contact-item summary .status-pill{grid-column:2;grid-row:1 / span 2;white-space:nowrap;}
+.contact-item-body{padding:0 14px 14px;border-top:1px solid var(--border);}
+.contact-body{margin-top:12px;font-size:14px;line-height:1.7;color:var(--ink-dim);word-break:break-word;}
+.contact-answer{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--ok-bg);}
+.contact-answer-head{font-size:12.5px;font-weight:700;color:var(--ok);}
+.contact-answer .contact-body{margin-top:6px;color:var(--ink);}
+.contact-wait{margin-top:12px;font-size:13px;color:var(--ink-faint);}

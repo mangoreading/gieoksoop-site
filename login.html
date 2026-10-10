@@ -108,6 +108,8 @@
           <a href="terms.html">이용약관</a>
           <span class="sep">|</span>
           <a href="privacy.html">개인정보처리방침</a>
+          <span class="sep">|</span>
+          <a href="contact.html">문의하기</a>
         </div>
       </div>
       <div class="foot-bottom">
@@ -178,6 +180,12 @@
       } catch (e) {
         // 토큰을 못 받아오면 기존처럼 account.html에서 다시 시도
       }
+    }
+    // 로그인 후 돌아갈 곳(허용 목록에 있는 페이지만 -- 임의 주소로 보내는 open redirect 방지)
+    const nextPage = params.get('next');
+    if (nextPage === 'contact.html' && user && user.emailVerified) {
+      window.location.href = 'contact.html';
+      return;
     }
     window.location.href = 'account.html' + window.location.search;
   }

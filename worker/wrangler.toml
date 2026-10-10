@@ -10,7 +10,8 @@ compatibility_date = "2026-09-17"
 routes = [
   { pattern = "gieoksoop.com/share/*", zone_name = "gieoksoop.com" },
   { pattern = "gieoksoop.com/api/share/*", zone_name = "gieoksoop.com" },
-  { pattern = "gieoksoop.com/api/payments/*", zone_name = "gieoksoop.com" }
+  { pattern = "gieoksoop.com/api/payments/*", zone_name = "gieoksoop.com" },
+  { pattern = "gieoksoop.com/api/inquiry/*", zone_name = "gieoksoop.com" }
 ]
 
 # 인생챕터 외부공유용 R2 버킷 바인딩.
@@ -20,6 +21,9 @@ bucket_name = "gieoksoop-shares"
 
 [vars]
 FIREBASE_PROJECT_ID = "gieoksoop"
+# 문의 알림 메일(선택). RESEND_API_KEY(secret)가 없으면 메일은 건너뛰고 문의 접수/답변은 그대로 동작한다.
+# MAIL_FROM의 도메인은 Resend에서 인증돼 있어야 한다. 새 문의 알림 수신 주소는 INQUIRY_NOTIFY_TO(기본 gieoksoop@gmail.com).
+MAIL_FROM = "기억숲 <noreply@gieoksoop.com>"
 
 # 정기결제 자동 실행(cron). 매시 정각에 돌면서 다음 결제일이 지난 구독자를 찾아 자동으로 재결제한다.
 # 이용 기간·다음 결제일은 한국시간 00:00 단위라 00:00 KST(=UTC 15:00) 실행분이 정기결제를 처리하고,
