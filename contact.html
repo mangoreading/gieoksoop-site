@@ -63,6 +63,13 @@
     <div id="contactState" class="card contact-state" style="max-width:760px;"><p class="desc" style="margin:0;">불러오는 중...</p></div>
 
     <div id="contactMain" style="display:none;">
+      <div class="card contact-card" id="faqCard" style="max-width:760px;text-align:left;margin-bottom:24px;display:none;">
+        <h2>문의 전에 확인해 보세요</h2>
+        <p class="desc" style="margin-bottom:12px;">자주 묻는 질문에서 바로 해결될 수도 있어요. 질문을 눌러 답변을 확인해 보세요.</p>
+        <div id="faqList" class="contact-history" style="margin-top:0;"></div>
+        <p class="field-hint" style="margin-top:12px;"><a href="guide.html" style="color:var(--blue);font-weight:600;">사용가이드 전체 보기</a></p>
+      </div>
+
       <div class="card contact-card" style="max-width:760px;text-align:left;">
         <h2>새 문의 남기기</h2>
         <p class="desc">보내주신 내용은 운영자가 확인하고 답변드려요. 영업일 기준 1~2일 안에 답변드리는 것을 목표로 하고 있어요.</p>
@@ -84,13 +91,22 @@
           <div class="form-field">
             <label for="cTitle">제목</label>
             <input type="text" id="cTitle" maxlength="100" placeholder="무엇이 궁금하신가요?" required>
+            <div class="contact-suggest" id="cSuggest" style="display:none;"></div>
           </div>
           <div class="form-field">
             <label for="cMessage">내용</label>
             <textarea id="cMessage" rows="7" maxlength="2000" placeholder="어떤 상황인지 자세히 적어주시면 더 빨리 도와드릴 수 있어요." required></textarea>
             <div class="contact-count"><span id="cCount">0</span> / 2000</div>
           </div>
-          <p class="field-hint" style="margin:0 0 18px;">사진·카드번호·비밀번호 같은 민감한 정보는 적지 말아주세요. 문의 내용은 답변과 서비스 개선을 위해서만 사용돼요.</p>
+          <div class="form-field">
+            <label>스크린샷 첨부 <span class="contact-opt">(선택 · 최대 3장)</span></label>
+            <input type="file" id="cFiles" accept="image/png,image/jpeg,image/webp" multiple hidden>
+            <button type="button" class="btn btn-outline btn-sm" id="cAddFile">이미지 선택</button>
+            <span class="contact-opt" style="margin-left:8px;">또는 화면 캡처 후 이 창에서 붙여넣기(Ctrl+V)</span>
+            <div class="contact-previews" id="cPreview"></div>
+            <p class="field-hint">화면 캡처를 함께 보내주시면 더 정확하고 빠르게 도와드릴 수 있어요. 이름·전화번호·카드번호 같은 개인정보는 가리고 올려주세요. 이미지는 자동으로 크기가 줄어들고 촬영 위치 같은 부가 정보는 제거되며, 문의 처리 목적으로만 쓰여요.</p>
+          </div>
+          <p class="field-hint" style="margin:0 0 18px;">카드번호·비밀번호 같은 민감한 정보는 적지 말아주세요. 문의 내용은 답변과 서비스 개선을 위해서만 사용돼요.</p>
           <div style="text-align:center;"><button type="submit" class="btn btn-primary" id="cSubmit">문의 보내기</button></div>
         </form>
       </div>
@@ -203,6 +219,8 @@
       const answer = q.answer
         ? `<div class="contact-answer"><div class="contact-answer-head">기억숲 답변${q.answered_at ? ' · ' + fmtDate(q.answered_at) : ''}</div><div class="contact-body">${esc(q.answer).replace(/\n/g, '<br>')}</div></div>`
         : '<div class="contact-wait">답변을 준비하고 있어요. 답변이 등록되면 가입하신 이메일로도 알려드려요.</div>';
+      const thumbs = Array.isArray(q.attachments) && q.attachments.length
+        ? `<div class="contact-thumbs" data-inq="${esc(q.id)}" data-n="${q.attachments.map((a) => a.n).join(',')}"></div>` : '';
       return `<details class="contact-item"${q.answer ? ' open' : ''}>
         <summary>
           <span class="contact-item-title">${esc(q.title)}</span>
@@ -211,11 +229,204 @@
         </summary>
         <div class="contact-item-body">
           <div class="contact-body">${esc(q.message).replace(/\n/g, '<br>')}</div>
+          ${thumbs}
           ${answer}
         </div>
       </details>`;
     }).join('');
+    box.querySelectorAll('details[open]').forEach((d) => loadThumbs(d));
   }
+
+  // ---- 첨부 이미지 표시(작성자 본인만 볼 수 있어 로그인 토큰으로 가져온다) ----
+  async function loadThumbs(root) {
+    root.querySelectorAll('.contact-thumbs:not([data-loaded])').forEach(async (box) => {
+      box.setAttribute('data-loaded', '1');
+      const id = box.getAttribute('data-inq');
+      const ns = (box.getAttribute('data-n') || '').split(',').filter(Boolean);
+      let token = '';
+      try { token = await currentUser.getIdToken(); } catch (e) { return; }
+      for (const n of ns) {
+        try {
+          const res = await fetch('/api/inquiry/file?id=' + encodeURIComponent(id) + '&n=' + encodeURIComponent(n), {
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          if (!res.ok) throw new Error('missing');
+          const url = URL.createObjectURL(await res.blob());
+          const a = document.createElement('a');
+          a.href = url; a.target = '_blank'; a.rel = 'noopener';
+          const img = document.createElement('img');
+          img.src = url; img.alt = '첨부 이미지 ' + n;
+          a.appendChild(img);
+          box.appendChild(a);
+        } catch (e) {
+          const sp = document.createElement('span');
+          sp.className = 'contact-opt';
+          sp.textContent = '보관 기간이 지나 삭제된 이미지예요.';
+          box.appendChild(sp);
+          break;
+        }
+      }
+    });
+  }
+  $('cHistory').addEventListener('toggle', (e) => { if (e.target.open) loadThumbs(e.target); }, true);
+
+  // ---- 스크린샷 첨부 ----
+  const MAX_FILES = 3;
+  let pendingFiles = []; // { blob, url, name }
+
+  function shrinkImage(file) {
+    // 가로·세로 최대 2000px, JPEG로 다시 저장(용량 감소 + 촬영 위치 등 부가 정보 제거)
+    return new Promise((resolve, reject) => {
+      const src = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const r = Math.min(1, 2000 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width * r));
+        c.height = Math.max(1, Math.round(img.height * r));
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(src);
+        let q = 0.88;
+        const tryEncode = () => c.toBlob((blob) => {
+          if (!blob) return reject(new Error('encode_failed'));
+          if (blob.size > 4.5 * 1024 * 1024 && q > 0.5) { q -= 0.12; return tryEncode(); }
+          resolve(blob);
+        }, 'image/jpeg', q);
+        tryEncode();
+      };
+      img.onerror = () => { URL.revokeObjectURL(src); reject(new Error('decode_failed')); };
+      img.src = src;
+    });
+  }
+
+  function renderPreviews() {
+    const box = $('cPreview');
+    box.innerHTML = '';
+    pendingFiles.forEach((f, i) => {
+      const item = document.createElement('div');
+      item.className = 'contact-preview';
+      const img = document.createElement('img');
+      img.src = f.url; img.alt = f.name;
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'contact-preview-rm'; rm.textContent = '×'; rm.setAttribute('aria-label', '첨부 삭제');
+      rm.addEventListener('click', () => {
+        URL.revokeObjectURL(f.url);
+        pendingFiles.splice(i, 1);
+        renderPreviews();
+      });
+      item.appendChild(img); item.appendChild(rm);
+      box.appendChild(item);
+    });
+    $('cAddFile').disabled = pendingFiles.length >= MAX_FILES;
+  }
+
+  async function addFiles(fileList) {
+    const files = Array.from(fileList || []).filter((f) => /^image\/(png|jpeg|webp|gif)$/.test(f.type));
+    if (!files.length) return;
+    setError('');
+    for (const f of files) {
+      if (pendingFiles.length >= MAX_FILES) { setError('이미지는 최대 ' + MAX_FILES + '장까지 첨부할 수 있어요.'); break; }
+      try {
+        const blob = await shrinkImage(f);
+        pendingFiles.push({ blob, url: URL.createObjectURL(blob), name: (f.name || 'screenshot').replace(/\.[^.]+$/, '') + '.jpg' });
+      } catch (e) {
+        setError('이미지를 읽지 못했어요. PNG, JPG 이미지를 사용해 주세요.');
+      }
+    }
+    renderPreviews();
+  }
+
+  $('cAddFile').addEventListener('click', () => $('cFiles').click());
+  $('cFiles').addEventListener('change', async () => { await addFiles($('cFiles').files); $('cFiles').value = ''; });
+  document.addEventListener('paste', (e) => {
+    if ($('contactMain').style.display === 'none') return;
+    const items = (e.clipboardData && e.clipboardData.files) || [];
+    if (items.length) addFiles(items);
+  });
+
+  async function uploadAttachments(inquiryId) {
+    const token = await currentUser.getIdToken();
+    const fd = new FormData();
+    fd.set('id', inquiryId);
+    pendingFiles.forEach((f) => fd.append('file', f.blob, f.name));
+    const res = await fetch('/api/inquiry/attach', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: fd });
+    if (!res.ok) throw new Error('attach_failed_' + res.status);
+  }
+
+  // ---- 기본 Q&A 안내(사용가이드 내용을 읽어 와서 보여주고, 입력 중에 비슷한 질문을 제안) ----
+  const norm = (t) => String(t || '').toLowerCase().replace(/휴대폰|핸드폰|스마트폰|모바일/g, '폰').replace(/[^0-9a-z가-힣]/g, '');
+  const bigrams = (t) => { const n = norm(t); const set = new Set(); for (let i = 0; i < n.length - 1; i++) set.add(n.slice(i, i + 2)); return set; };
+  function parseFaq(body) {
+    const out = []; const re = /(?:^|\n)Q\.\s*([^\n]+)\n([\s\S]*?)(?=\n\s*\nQ\.|$)/g; let m;
+    while ((m = re.exec(String(body || '')))) out.push({ q: m[1].trim(), a: m[2].trim() });
+    return out;
+  }
+  let kb = [];
+  let kbDf = new Map();
+
+  async function loadKnowledge() {
+    let sections = [];
+    try {
+      const snap = await getDocs(query(collection(db, 'guides'), orderBy('order', 'asc')));
+      sections = snap.docs.map((d) => d.data()).filter((g) => g.published !== false);
+    } catch (e) { return; }
+    const faqs = [];
+    sections.forEach((g) => {
+      const isFaq = g.anchor_id === 'faq' || /자주 묻는/.test(g.title || '');
+      if (isFaq) {
+        parseFaq(g.body).forEach((f) => {
+          faqs.push(f);
+          kb.push({ type: 'faq', q: f.q, a: f.a, link: 'guide.html#' + (g.anchor_id || 'faq'), text: f.q + ' ' + f.q + ' ' + f.a });
+        });
+      } else if (g.title) {
+        kb.push({ type: 'section', title: g.title, link: 'guide.html#' + g.anchor_id, text: g.title + ' ' + g.title + ' ' + (g.body || '') });
+      }
+    });
+    kb.forEach((d) => { d.bg = bigrams(d.text); d.bg.forEach((b) => kbDf.set(b, (kbDf.get(b) || 0) + 1)); });
+    if (faqs.length) {
+      $('faqList').innerHTML = faqs.map((f) => `<details class="contact-item"><summary><span class="contact-item-title">${esc(f.q)}</span></summary><div class="contact-item-body"><div class="contact-body">${esc(f.a).replace(/\n/g, '<br>')}</div></div></details>`).join('');
+      $('faqCard').style.display = '';
+    }
+  }
+
+  function suggest(text) {
+    const q = bigrams(text);
+    if (q.size < 3 || !kb.length) return [];
+    const N = kb.length;
+    const idf = (b) => Math.log(1 + N / (kbDf.get(b) || 0.5));
+    let total = 0; q.forEach((b) => { total += idf(b); });
+    const hits = kb.map((d) => {
+      let s = 0, shared = 0;
+      q.forEach((b) => { if (d.bg.has(b)) { s += idf(b); shared++; } });
+      return { d, shared, rel: total ? s / total : 0 };
+    }).filter((x) => x.shared >= 3 && x.rel >= (x.d.type === 'faq' ? 0.3 : 0.5)).sort((a, b) => b.rel - a.rel);
+    const out = []; let sec = 0;
+    for (const h of hits) {
+      if (h.d.type === 'section') { if (sec >= 1) continue; sec++; }
+      out.push(h.d);
+      if (out.length >= 3) break;
+    }
+    return out;
+  }
+
+  let suggestTimer = null;
+  function refreshSuggest() {
+    clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(() => {
+      const list = suggest($('cTitle').value + ' ' + $('cMessage').value);
+      const box = $('cSuggest');
+      if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+      box.innerHTML = '<div class="contact-suggest-head">혹시 이 내용이 도움이 될까요?</div>' + list.map((d) => d.type === 'faq'
+        ? `<details><summary>${esc(d.q)}</summary><div class="contact-body">${esc(d.a).replace(/\n/g, '<br>')}</div></details>`
+        : `<div class="contact-suggest-link">사용가이드 · <a href="${esc(d.link)}" target="_blank" rel="noopener">${esc(d.title)}</a></div>`).join('');
+      box.style.display = '';
+    }, 350);
+  }
+  $('cTitle').addEventListener('input', refreshSuggest);
+  $('cMessage').addEventListener('input', refreshSuggest);
 
   $('cCategory').addEventListener('change', () => {
     const hint = HINTS[$('cCategory').value] || '';
@@ -275,6 +486,11 @@
         setError('문의를 저장하지 못했어요. 잠시 후 다시 시도해 주세요. 계속되면 ' + MAIL + ' 으로 보내주세요.');
         return;
       }
+      // 스크린샷 업로드(실패해도 문의 자체는 이미 접수된 상태)
+      let attachFailed = false;
+      if (pendingFiles.length) {
+        try { await uploadAttachments(savedId); } catch (err) { console.error('inquiry_attach_failed', err); attachFailed = true; }
+      }
       // 운영자 알림 메일(실패해도 문의 접수에는 영향 없음)
       try {
         const token = await currentUser.getIdToken();
@@ -286,10 +502,16 @@
       } catch (err) { /* 알림 실패는 무시 */ }
 
       $('contactForm').reset();
+      pendingFiles.forEach((f) => URL.revokeObjectURL(f.url));
+      pendingFiles = [];
+      renderPreviews();
+      $('cSuggest').style.display = 'none';
       $('cCount').textContent = '0';
       $('cHint').style.display = 'none';
       const ok = $('cSuccess');
-      ok.textContent = '문의가 접수됐어요. 답변이 등록되면 이메일로 알려드릴게요.';
+      ok.textContent = attachFailed
+        ? '문의는 접수됐지만 이미지 첨부는 올리지 못했어요. 필요하면 ' + MAIL + ' 으로 이미지를 보내주세요.'
+        : '문의가 접수됐어요. 답변이 등록되면 이메일로 알려드릴게요.';
       ok.style.display = 'block';
       await loadHistory();
     } catch (err) {
@@ -313,6 +535,7 @@
     }
     $('contactState').style.display = 'none';
     $('contactMain').style.display = '';
+    loadKnowledge();
     await loadHistory();
   });
 </script>

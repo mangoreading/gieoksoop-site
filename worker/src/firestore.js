@@ -342,3 +342,17 @@ export async function firestoreDeleteDoc(env, path) {
   });
   if (!res.ok && res.status !== 404) throw new Error("firestore_delete_failed: " + (await res.text()));
 }
+
+// 컬렉션의 문서를 한꺼번에(최대 pageSize개, 한 페이지) 읽기. 가이드처럼 개수가 적은 컬렉션용.
+export async function firestoreListDocs(env, collectionId, pageSize = 100) {
+  const token = await getGoogleAccessToken(env);
+  const res = await fetch(`${docBaseUrl(env)}/${collectionId}?pageSize=${pageSize}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("firestore_list_failed: " + (await res.text()));
+  const data = await res.json();
+  return (data.documents || []).map((d) => ({
+    id: d.name.split("/").pop(),
+    ...decodeFields(d.fields || {}),
+  }));
+}

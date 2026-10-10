@@ -890,3 +890,20 @@ html.popup-mode .page-head{padding:24px 24px 4px;}
 .contact-answer-head{font-size:12.5px;font-weight:700;color:var(--ok);}
 .contact-answer .contact-body{margin-top:6px;color:var(--ink);}
 .contact-wait{margin-top:12px;font-size:13px;color:var(--ink-faint);}
+
+/* ---- 문의하기: 첨부·Q&A 제안 ---- */
+.contact-opt{font-size:12.5px;font-weight:500;color:var(--ink-faint);}
+.contact-previews{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+.contact-preview{position:relative;width:96px;height:96px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg);}
+.contact-preview img{width:100%;height:100%;object-fit:cover;display:block;}
+.contact-preview-rm{position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(30,42,60,.78);color:#fff;font-size:14px;line-height:1;cursor:pointer;padding:0;}
+.contact-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.contact-thumbs a{display:block;width:96px;height:96px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg);}
+.contact-thumbs img{width:100%;height:100%;object-fit:cover;display:block;}
+.contact-suggest{margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--ok-bg);font-size:13px;line-height:1.55;color:var(--ink-dim);}
+.contact-suggest-head{font-weight:700;color:var(--ok);margin-bottom:4px;}
+.contact-suggest details{margin-top:4px;}
+.contact-suggest summary{cursor:pointer;font-weight:600;color:var(--navy);}
+.contact-suggest .contact-body{margin-top:6px;}
+.contact-suggest-link{margin-top:4px;}
+.contact-suggest a{color:var(--blue);font-weight:600;}
