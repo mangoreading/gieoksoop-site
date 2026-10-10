@@ -149,6 +149,7 @@
 <script type="module">
   import { watchAuthForNav, initAccountMenu, auth, db } from './js/auth.js';
   import { initLangToggle } from './js/i18n.js';
+  import { showAlert, showReceipt } from './js/dialog.js';
   import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { collection, doc, getDocs, setDoc, query, where, serverTimestamp }
     from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
@@ -441,6 +442,10 @@
     el.style.display = msg ? 'block' : 'none';
   }
 
+  function showSaveFailed() {
+    showAlert('문의를 저장하지 못했어요. 잠시 후 다시 시도해 주세요. 계속되면 ' + MAIL + ' 으로 보내주세요.', { title: '문의를 보내지 못했어요', icon: { type: 'error', glyph: '!' } });
+  }
+
   $('contactForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     setError('');
@@ -462,7 +467,7 @@
       const freeSlots = [];
       for (let n = 1; n <= DAILY_LIMIT; n++) if (!used.has(prefix + n)) freeSlots.push(n);
       if (freeSlots.length === 0) {
-        setError('오늘은 문의를 최대 ' + DAILY_LIMIT + '건까지 남길 수 있어요. 내일 다시 남겨주세요.');
+        showAlert('오늘은 문의를 최대 ' + DAILY_LIMIT + '건까지 남길 수 있어요. 내일 다시 남겨 주세요.', { title: '오늘 문의 한도 도달', icon: { type: 'warn', glyph: '!' } });
         return;
       }
       const base = { uid: currentUser.uid, email: currentUser.email, category, title, message, status: 'open' };
@@ -483,7 +488,7 @@
         }
       }
       if (!savedId) {
-        setError('문의를 저장하지 못했어요. 잠시 후 다시 시도해 주세요. 계속되면 ' + MAIL + ' 으로 보내주세요.');
+        showSaveFailed();
         return;
       }
       // 스크린샷 업로드(실패해도 문의 자체는 이미 접수된 상태)
@@ -501,6 +506,8 @@
         }).catch(() => {});
       } catch (err) { /* 알림 실패는 무시 */ }
 
+      const sentCategory = $('cCategory').selectedOptions[0] ? $('cCategory').selectedOptions[0].textContent.trim() : '';
+      const sentFileCount = pendingFiles.length;
       $('contactForm').reset();
       pendingFiles.forEach((f) => URL.revokeObjectURL(f.url));
       pendingFiles = [];
@@ -508,15 +515,17 @@
       $('cSuggest').style.display = 'none';
       $('cCount').textContent = '0';
       $('cHint').style.display = 'none';
-      const ok = $('cSuccess');
-      ok.textContent = attachFailed
-        ? '문의는 접수됐지만 이미지 첨부는 올리지 못했어요. 필요하면 ' + MAIL + ' 으로 이미지를 보내주세요.'
-        : '문의가 접수됐어요. 답변이 등록되면 이메일로 알려드릴게요.';
-      ok.style.display = 'block';
+      const sentRows = [{ k: '분류', v: sentCategory }, { k: '제목', v: title }];
+      if (sentFileCount) sentRows.push({ k: '첨부 이미지', v: attachFailed ? '올리지 못했어요' : sentFileCount + '장' });
+      if (attachFailed) {
+        showAlert('문의는 접수됐지만 이미지 첨부는 올리지 못했어요. 필요하면 ' + MAIL + ' 으로 이미지를 보내주세요.', { title: '문의가 접수됐어요', icon: { type: 'warn', glyph: '!' }, summaryRows: sentRows });
+      } else {
+        showReceipt('문의가 접수됐어요. 답변이 등록되면 이메일로 알려드릴게요. 아래 내 문의 내역에서도 확인할 수 있어요.', sentRows, { title: '문의 접수 완료' });
+      }
       await loadHistory();
     } catch (err) {
       console.error('inquiry_submit_failed', err);
-      setError('문의를 저장하지 못했어요. 잠시 후 다시 시도해 주세요. 계속되면 ' + MAIL + ' 으로 보내주세요.');
+      showSaveFailed();
     } finally {
       btn.disabled = false;
       btn.classList.remove('btn-loading');
