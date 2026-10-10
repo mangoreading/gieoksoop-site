@@ -272,7 +272,7 @@
         : '<span class="status-pill">접수됨</span>';
       const answer = q.answer
         ? `<div class="contact-answer"><div class="contact-answer-head">기억숲 답변${q.answered_at ? ' · ' + fmtDate(q.answered_at) : ''}</div><div class="contact-body">${esc(q.answer).replace(/\n/g, '<br>')}</div></div>`
-        : '<div class="contact-wait">답변을 준비하고 있어요. 답변이 등록되면 가입하신 이메일로도 알려드려요.</div>';
+        : '<div class="contact-wait">답변을 준비하고 있어요. 답변이 등록되면 이 화면에 표시돼요.</div>';
       const thumbs = Array.isArray(q.attachments) && q.attachments.length
         ? `<div class="contact-thumbs" data-inq="${esc(q.id)}" data-n="${q.attachments.map((a) => a.n).join(',')}"></div>` : '';
       return `<details class="contact-item"${q.answer ? ' open' : ''}>
@@ -573,7 +573,7 @@
       if (attachFailed) {
         showAlert('문의는 접수됐지만 이미지 첨부는 올리지 못했어요. 필요하면 ' + MAIL + ' 으로 이미지를 보내주세요.', { title: '문의가 접수됐어요', icon: { type: 'warn', glyph: '!' }, summaryRows: sentRows });
       } else {
-        showReceipt('문의가 접수됐어요. 답변이 등록되면 이메일로 알려드릴게요. 「내 문의 내역」 탭에서도 확인할 수 있어요.', sentRows, { title: '문의 접수 완료' });
+        showReceipt('문의가 접수됐어요. 답변은 「내 문의 내역」 탭에서 확인할 수 있어요.', sentRows, { title: '문의 접수 완료' });
       }
       await loadHistory();
     } catch (err) {
