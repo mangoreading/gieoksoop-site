@@ -67,7 +67,7 @@
 
 <div class="page-head">
   <h1>내 계정</h1>
-  <p>로그인 정보와 구독 상태를 확인할 수 있어요.</p>
+  <p>로그인 정보와 구독 상태를 확인할 수 있습니다.</p>
 </div>
 
 <section style="padding-top:24px;">
@@ -123,7 +123,7 @@
               <span class="status-pill" id="subStatusPill">확인 중...</span>
             </div>
             <dl class="sub-info" id="subInfo"></dl>
-            <ul class="sub-guide" id="subGuide"><li>구독 정보를 불러오는 중이에요...</li></ul>
+            <ul class="sub-guide" id="subGuide"><li>구독 정보를 불러오는 중입니다...</li></ul>
             <div id="subActionArea"></div>
           </section>
 
@@ -150,8 +150,8 @@
       <div class="modal-box">
         <button type="button" class="modal-close" id="customerInfoCloseBtn" aria-label="닫기">&times;</button>
         <h3>카드 변경</h3>
-        <p class="desc">새 카드를 등록하기 전에 카드 등록에 필요한 이름과 휴대폰 번호를 확인해 주세요. 필요하면 수정할 수 있어요.</p>
-        <p class="desc" style="margin-top:-6px;font-size:13px;color:var(--ink-faint);">카드를 등록할 때는 결제가 되지 않아요. 다음 결제일부터 새 카드로 자동결제돼요.</p>
+        <p class="desc">새 카드를 등록하기 전에 카드 등록에 필요한 이름과 휴대폰 번호를 확인해 주세요. 필요하면 수정할 수 있습니다.</p>
+        <p class="desc" style="margin-top:-6px;font-size:13px;color:var(--ink-faint);">카드를 등록할 때는 결제가 되지 않습니다. 다음 결제일부터 새 카드로 자동결제됩니다.</p>
         <div class="form-error" id="customerInfoError"></div>
         <form id="customerInfoForm">
           <div class="form-field">
@@ -348,10 +348,10 @@
     if (/카드번호|card ?number/i.test(msg)) return '카드번호를 다시 확인해 주세요.';
     if (/유효\s*기간|expir/i.test(msg)) return '카드 유효기간을 다시 확인해 주세요.';
     if (/한도|잔액|insufficient/i.test(msg)) return '카드 한도 또는 잔액을 확인해 주세요.';
-    if (/분실|도난|정지|blocked|lost|stolen/i.test(msg)) return '카드사에서 거래를 제한하고 있어요. 카드사에 문의해 주세요.';
-    if (/인증/i.test(msg)) return '본인 인증에 실패했어요. 다시 시도해 주세요.';
+    if (/분실|도난|정지|blocked|lost|stolen/i.test(msg)) return '카드사에서 거래를 제한하고 있습니다. 카드사에 문의해 주세요.';
+    if (/인증/i.test(msg)) return '본인 인증에 실패했습니다. 다시 시도해 주세요.';
     // 위에서 분류하지 못한 사유는 원문 일부를 함께 보여준다(원인 파악·문의 응대용).
-    return '카드사 정책에 따라 결제가 거절됐어요. 다른 카드로 시도하거나 카드사에 문의해 주세요.' + ' (사유: ' + msg.slice(0, 120) + ')';
+    return '카드사 정책에 따라 결제가 거절되었습니다. 다른 카드로 시도하거나 카드사에 문의해 주세요.' + ' (사유: ' + msg.slice(0, 120) + ')';
   }
 
   function openCustomerInfoModal({ fullName, phoneNumber }) {
@@ -390,7 +390,7 @@
           return;
         }
         if (!/^01[0-9]{8,9}$/.test(rawPhone)) {
-          errorEl.textContent = '휴대폰 번호 형식이 올바르지 않아요. 숫자만 입력해 주세요. (예: 01012345678)';
+          errorEl.textContent = '휴대폰 번호 형식이 올바르지 않습니다. 숫자만 입력해 주세요. (예: 01012345678)';
           errorEl.style.display = 'block';
           return;
         }
@@ -478,7 +478,7 @@
         console.error(e);
       }
       if (!res.ok || !data || !data.ok) {
-        const retry = await showRetryableError('카드 변경 처리 중 문제가 발생했어요: ' + friendlyBillingError(data && (data.detail || data.error)));
+        const retry = await showRetryableError('카드 변경 처리 중 문제가 발생했습니다: ' + friendlyBillingError(data && (data.detail || data.error)));
         if (retry) return runCardChange({ fullName, phoneNumber }, btn);
         return;
       }
@@ -493,19 +493,19 @@
       const cardText = newCard.card_number
         ? `${newCard.card_name || CARD_BRAND_LABEL[newCard.card_brand] || ''} ${newCard.card_number}`.trim()
         : '';
-      await showReceipt('카드가 변경됐어요.', [
+      await showReceipt('카드가 변경되었습니다.', [
         ...(cardText ? [{ k: '새 카드', v: cardText, strong: true }] : []),
         { k: '지금 결제 금액', v: '없음' },
         { k: '결제 시점', v: '다음 결제일부터 새 카드로 자동결제' },
       ], {
         title: '카드 변경 완료',
-        notes: ['기존 카드는 더 이상 결제에 사용되지 않아요.'],
+        notes: ['기존 카드는 더 이상 결제에 사용되지 않습니다.'],
         wide: true,
       });
       window.location.reload();
     } catch (e) {
       console.error(e);
-      const retry = await showRetryableError('카드 변경 중 문제가 발생했어요: ' + (e.message || e));
+      const retry = await showRetryableError('카드 변경 중 문제가 발생했습니다: ' + (e.message || e));
       if (retry) return runCardChange({ fullName, phoneNumber }, btn);
     } finally {
       setPgDim(false);
@@ -627,7 +627,7 @@
       if (!isOneTime) {
         // 정기결제(자동 갱신 중)일 때만 [변경] 버튼을 붙인다. 카드 정보를 못 읽은 예전 구독자도 행은 보여서 변경할 수 있게 한다.
         const card = describeCard(d).replace('등록된 카드: ', '');
-        rows.push(['등록된 카드', card || '카드 정보를 확인하지 못했어요', { changeCard: autoRenew }]);
+        rows.push(['등록된 카드', card || '카드 정보를 확인하지 못했습니다', { changeCard: autoRenew }]);
       }
     }
     return rows;
@@ -698,24 +698,24 @@
         // 연간 이용권을 취소(부분환불)했고, 사용한 달까지 이용이 유지되는 상태.
         pill.textContent = '취소됨 (이용 종료 예정)';
         pill.className = 'status-pill canceled';
-        setGuide([`${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요.`, '환불은 완료됐고, 그 이후에는 서비스가 종료돼요.', '연간 이용권은 자동으로 갱신되지 않아요.']);
+        setGuide([`${untilStr || '이용 기간 종료일'}까지 이용하실 수 있습니다.`, '환불은 완료됐고, 그 이후에는 서비스가 종료됩니다.', '연간 이용권은 자동으로 갱신되지 않습니다.']);
       } else if (plan === 'monthly') {
         // 연간 결제를 환불해 월간 이용 기간만 남은 상태 -- 자동결제는 이미 종료됐다.
         pill.textContent = '이용 중 (월간 · 자동결제 종료)';
         pill.className = 'status-pill active';
-        setGuide([`${untilStr || '이용 기간 종료일'}까지 이용하실 수 있어요.`, '월간 자동결제는 이미 종료됐어요.', '이용 기간이 끝난 뒤에는 월간 구독을 새로 시작할 수 있어요.']);
+        setGuide([`${untilStr || '이용 기간 종료일'}까지 이용하실 수 있습니다.`, '월간 자동결제는 이미 종료되었습니다.', '이용 기간이 끝난 뒤에는 월간 구독을 새로 시작할 수 있습니다.']);
       } else if (startsAt && startsAt.getTime() > Date.now()) {
         // 월간 이용 중 연간을 결제해 둔 상태 -- 월간 만료일까지는 월간, 그 뒤부터 연간.
         pill.textContent = '이용 중 (월간 → 연간 예정)';
         pill.className = 'status-pill active';
-        setGuide([`${untilOf(startsTs)}까지는 월간 이용 기간이에요.`, `그 뒤부터 ${untilStr || ''}까지 연간 이용권이 이어서 적용돼요.`, '월간 자동결제는 종료됐고, 연간 이용권은 자동으로 갱신되지 않아요.']);
+        setGuide([`${untilOf(startsTs)}까지는 월간 이용 기간입니다.`, `그 뒤부터 ${untilStr || ''}까지 연간 이용권이 이어서 적용됩니다.`, '월간 자동결제는 종료됐고, 연간 이용권은 자동으로 갱신되지 않습니다.']);
       } else {
         pill.textContent = '이용 중 (연간 이용권)';
         pill.className = 'status-pill active';
         setGuide([
-          ...(untilStr ? [`${untilStr}까지 이용하실 수 있어요.`] : []),
-          '연간 이용권은 자동으로 갱신되지 않아요.',
-          '만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해져요.',
+          ...(untilStr ? [`${untilStr}까지 이용하실 수 있습니다.`] : []),
+          '연간 이용권은 자동으로 갱신되지 않습니다.',
+          '만료 3개월 전부터 연장할 수 있고, 연장하면 남은 기간 뒤에 1년이 이어서 더해집니다.',
         ]);
       }
       const expDate = subData.next_billing_at && subData.next_billing_at.toDate ? subData.next_billing_at.toDate() : null;
@@ -733,12 +733,12 @@
         (canRefund ? `<button type="button" class="btn btn-outline btn-sm" id="refundAnnualBtn" style="margin-left:${canExtend ? 8 : 0}px;">연간 이용권 취소(환불)하기</button>` : '');
       if (refundCalc && subData.last_one_time_payment_id) {
         const hintText = refundCalc.mode === 'before_start'
-          ? '아직 이용 전이라 28,000원 전액 환불할 수 있어요.'
+          ? '아직 이용 전이라 28,000원 전액 환불할 수 있습니다.'
           : refundCalc.mode === 'within_7days'
-            ? '결제 후 7일 이내이고 기억숲 앱을 사용하지 않아 28,000원 전액 환불할 수 있어요.'
+            ? '결제 후 7일 이내이고 기억숲 앱을 사용하지 않아 28,000원 전액 환불할 수 있습니다.'
             : refundCalc.amount > 0
-              ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불돼요 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtLast(refundCalc.endsAt)}까지는 계속 이용할 수 있어요.`
-              : '사용 개월 수가 많아 환불할 금액이 없어요. 만료일까지 계속 이용하실 수 있어요.';
+              ? `지금 취소하면 ${refundCalc.amount.toLocaleString()}원이 환불됩니다 (28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원). 사용한 달인 ${fmtLast(refundCalc.endsAt)}까지는 계속 이용할 수 있습니다.`
+              : '사용 개월 수가 많아 환불할 금액이 없습니다. 만료일까지 계속 이용하실 수 있습니다.';
         appendGuide(hintText);
       }
       if (canRefund) {
@@ -746,28 +746,28 @@
           const btn = document.getElementById('refundAnnualBtn');
           const rows = [{ k: '결제 금액', v: '28,000원' }];
           const notes = [
-            '환불은 결제하신 카드로 취소 처리돼요. 카드사에 따라 반영까지 영업일 기준 수일이 걸릴 수 있어요.',
-            '취소한 연간 이용권은 되돌릴 수 없어요. 다시 이용하시려면 새로 결제해야 해요.',
+            '환불은 결제하신 카드로 취소 처리됩니다. 카드사에 따라 반영까지 영업일 기준 수일이 걸릴 수 있습니다.',
+            '취소한 연간 이용권은 되돌릴 수 없습니다. 다시 이용하시려면 새로 결제하셔야 합니다.',
           ];
           let lead;
           if (refundCalc.mode === 'prorated') {
-            lead = '사용한 기간만큼 차감한 금액이 환불돼요.';
+            lead = '사용한 기간만큼 차감한 금액이 환불됩니다.';
             rows.push({ k: '환불 금액', v: refundCalc.amount.toLocaleString() + '원', strong: true });
             rows.push({ k: '계산', v: `28,000원 − 사용 ${refundCalc.usedMonths}개월 × 3,000원` });
             rows.push({ k: '이용 가능 기간', v: '~ ' + fmtLast(refundCalc.endsAt) + ' (사용한 달까지)' });
-            notes.unshift('사용한 달이 끝나면 연간 이용권이 종료돼요.');
+            notes.unshift('사용한 달이 끝나면 연간 이용권이 종료됩니다.');
           } else if (refundCalc.mode === 'within_7days') {
-            lead = '결제 후 7일 이내이고 앱을 사용하지 않아 전액 환불돼요.';
+            lead = '결제 후 7일 이내이고 앱을 사용하지 않아 전액 환불됩니다.';
             rows.push({ k: '환불 금액', v: '28,000원 (전액)', strong: true });
             rows.push({ k: '이용 기간', v: '취소 즉시 종료' });
           } else {
-            lead = '아직 이용 전이라 전액 환불돼요.';
+            lead = '아직 이용 전이라 전액 환불됩니다.';
             rows.push({ k: '환불 금액', v: '28,000원 (전액)', strong: true });
-            rows.push({ k: '이용 기간', v: '이번 결제로 늘어난 기간이 사라져요' });
-            notes.unshift('월간 이용 중이었다면 원래 월간 만료일까지만 이용할 수 있어요. 월간 자동결제는 다시 시작되지 않아요.');
+            rows.push({ k: '이용 기간', v: '이번 결제로 늘어난 기간이 사라집니다' });
+            notes.unshift('월간 이용 중이었다면 원래 월간 만료일까지만 이용할 수 있습니다. 월간 자동결제는 다시 시작되지 않습니다.');
           }
           const confirmed = await showConfirm(lead, {
-            title: '연간 이용권을 취소할까요?',
+            title: '연간 이용권을 취소하시겠습니까?',
             icon: { type: 'warn', glyph: '!' },
             okText: '취소하기',
             cancelText: '돌아가기',
@@ -791,28 +791,28 @@
           if (!res.ok || !resData || !resData.ok) {
             const code = resData && resData.error;
             if (code === 'refund_amount_changed') {
-              await showAlert(`환불 금액이 ${Number(resData.refundAmount).toLocaleString()}원으로 바뀌었어요(사용 개월 수 기준). 화면을 새로고침한 뒤 다시 확인해 주세요.`, { title: '환불 금액 변경' });
+              await showAlert(`환불 금액이 ${Number(resData.refundAmount).toLocaleString()}원으로 바뀌었습니다(사용 개월 수 기준). 화면을 새로고침한 뒤 다시 확인해 주세요.`, { title: '환불 금액 변경' });
               window.location.reload();
               return;
             }
             if (code === 'no_refund_amount') {
-              await showAlert('사용 개월 수가 많아 환불할 금액이 없어요. 연간 이용권은 자동 갱신되지 않으니 만료일까지 이용하시면 돼요.', { title: '환불 불가' });
+              await showAlert('사용 개월 수가 많아 환불할 금액이 없습니다. 연간 이용권은 자동 갱신되지 않으니 만료일까지 이용하시면 됩니다.', { title: '환불 불가' });
               setBtnLoading(btn, false);
               return;
             }
-            const retry = await showRetryableError('환불 처리 중 문제가 발생했어요. 잠시 후 다시 시도하거나 문의해 주세요.' + (code ? ' (오류: ' + code + ')' : ''));
+            const retry = await showRetryableError('환불 처리 중 문제가 발생했습니다. 잠시 후 다시 시도하거나 문의해 주세요.' + (code ? ' (오류: ' + code + ')' : ''));
             if (retry) return runRefundAnnual(btn);
             setBtnLoading(btn, false);
             return;
           }
-          await showReceipt('연간 이용권 취소와 환불이 완료됐어요.', [
+          await showReceipt('연간 이용권 취소와 환불이 완료되었습니다.', [
             { k: '환불 금액', v: Number(resData.refundedAmount || 0).toLocaleString() + '원', strong: true },
             ...(resData.validUntil ? [{ k: '이용 가능 기간', v: '~ ' + fmtLast(new Date(resData.validUntil)) }] : []),
-          ], { title: '환불 완료', notes: ['카드사에 따라 취소 내역이 반영되기까지 영업일 기준 수일이 걸릴 수 있어요.'], wide: true });
+          ], { title: '환불 완료', notes: ['카드사에 따라 취소 내역이 반영되기까지 영업일 기준 수일이 걸릴 수 있습니다.'], wide: true });
           window.location.reload();
         } catch (e) {
           console.error(e);
-          const retry = await showRetryableError('환불 처리 중 문제가 발생했어요: ' + (e.message || e));
+          const retry = await showRetryableError('환불 처리 중 문제가 발생했습니다: ' + (e.message || e));
           if (retry) return runRefundAnnual(btn);
           setBtnLoading(btn, false);
         }
@@ -825,17 +825,17 @@
         pill.textContent = '구독 중' + (plan ? ` (${planLabel(plan)})` : '');
         pill.className = 'status-pill active';
         // (예전 "다음 결제일부터 전환 예약"은 폐지 -- 남아 있는 pending_plan 값은 무시한다.)
-        setGuide(['현재 유료 구독을 이용 중이에요.', '다음 결제일에 자동으로 결제돼요.', '해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.']);
+        setGuide(['현재 유료 구독을 이용 중입니다.', '다음 결제일에 자동으로 결제됩니다.', '해지해도 이미 결제한 기간까지는 계속 이용하실 수 있습니다.']);
         if ((Number(subData.billing_retry_count) || 0) > 0) {
           // 자동결제가 실패해 재시도 대기 중인 상태(그동안 이용은 유지된다).
           const retryAt = tsDate(subData.billing_retry_at);
           pill.textContent = '자동결제 실패 (재시도 예정)';
           pill.className = 'status-pill canceled';
           setGuide([
-            '자동결제가 실패했어요. 카드 한도·유효기간·잔액을 확인해 주세요.',
-            retryAt ? `${kstDateTimeLabel(retryAt)} 다시 결제를 시도해요.` : '곧 다시 결제를 시도해요.',
-            '카드를 변경하면 새 카드로 곧바로 다시 시도해요.',
-            '재시도에도 계속 실패하면 구독이 종료돼요.',
+            '자동결제가 실패했습니다. 카드 한도·유효기간·잔액을 확인해 주세요.',
+            retryAt ? `${kstDateTimeLabel(retryAt)} 다시 결제를 시도합니다.` : '곧 다시 결제를 시도합니다.',
+            '카드를 변경하면 새 카드로 곧바로 다시 시도합니다.',
+            '재시도에도 계속 실패하면 구독이 종료됩니다.',
           ]);
         }
         actionArea.innerHTML = `
@@ -844,8 +844,8 @@
         document.getElementById('cancelSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('cancelSubBtn');
           const untilStr = untilOf(subData.next_billing_at);
-          const confirmed = await showConfirm('해지해도 이미 결제한 기간까지는 계속 이용하실 수 있어요.', {
-            title: '구독을 해지할까요?',
+          const confirmed = await showConfirm('해지해도 이미 결제한 기간까지는 계속 이용하실 수 있습니다.', {
+            title: '구독을 해지하시겠습니까?',
             icon: { type: 'warn', glyph: '!' },
             okText: '해지하기',
             cancelText: '계속 이용하기',
@@ -854,12 +854,12 @@
             summaryRows: [
               { k: '현재 플랜', v: '월간 (월 3,000원)' },
               ...(untilStr ? [{ k: '이용 가능 기간', v: '~ ' + untilStr, strong: true }] : []),
-              { k: '다음 결제', v: '해지 후 결제되지 않아요' },
-              { k: '환불', v: '결제한 기간은 환불되지 않아요' },
+              { k: '다음 결제', v: '해지 후 결제되지 않습니다' },
+              { k: '환불', v: '결제한 기간은 환불되지 않습니다' },
             ],
             notes: [
-              '이용 기간 안에는 [구독 유지하기]로 자동결제를 다시 켤 수 있어요.',
-              '이용 기간이 끝나면 무료 플랜으로 전환돼요. 내 컴퓨터의 사진과 분석 결과는 그대로 남아 있어요.',
+              '이용 기간 안에는 [구독 유지하기]로 자동결제를 다시 켤 수 있습니다.',
+              '이용 기간이 끝나면 무료 플랜으로 전환됩니다. 내 컴퓨터의 사진과 분석 결과는 그대로 남아 있습니다.',
             ],
           });
           if (!confirmed) return;
@@ -881,19 +881,19 @@
               // 응답 바디가 없어도 상태 코드로 판단
             }
             if (!res.ok || !resData || !resData.ok) {
-              const retry = await showRetryableError('구독 해지 처리 중 문제가 발생했어요.');
+              const retry = await showRetryableError('구독 해지 처리 중 문제가 발생했습니다.');
               if (retry) return runCancelSubscription(btn, untilStr);
               setBtnLoading(btn, false);
               return;
             }
-            await showReceipt('해지 예약이 완료됐어요.', [
+            await showReceipt('해지 예약이 완료되었습니다.', [
               ...(untilStr ? [{ k: '이용 가능 기간', v: '~ ' + untilStr, strong: true }] : []),
               { k: '다음 결제', v: '없음 (자동결제 해지)' },
-            ], { title: '해지 완료', notes: ['이용 기간 안에는 언제든 [구독 유지하기]로 자동결제를 다시 켤 수 있어요.'], wide: true });
+            ], { title: '해지 완료', notes: ['이용 기간 안에는 언제든 [구독 유지하기]로 자동결제를 다시 켤 수 있습니다.'], wide: true });
             window.location.reload();
           } catch (e) {
             console.error(e);
-            const retry = await showRetryableError('구독 해지 처리 중 문제가 발생했어요: ' + (e.message || e));
+            const retry = await showRetryableError('구독 해지 처리 중 문제가 발생했습니다: ' + (e.message || e));
             if (retry) return runCancelSubscription(btn, untilStr);
             setBtnLoading(btn, false);
           }
@@ -902,14 +902,14 @@
         pill.textContent = '해지 예정';
         pill.className = 'status-pill canceled';
         const untilStr = untilOf(subData.next_billing_at) || '이용 기간 종료일';
-        setGuide([`${untilStr}까지는 계속 이용하실 수 있어요.`, '그 이후에는 자동으로 결제되지 않아요.', "'구독 유지하기'를 누르면 자동 결제가 다시 켜져요."]);
+        setGuide([`${untilStr}까지는 계속 이용하실 수 있습니다.`, '그 이후에는 자동으로 결제되지 않습니다.', "'구독 유지하기'를 누르면 자동 결제가 다시 켜집니다."]);
         actionArea.innerHTML = `<button type="button" class="btn btn-outline btn-sm" id="resumeSubBtn">구독 유지하기</button>`;
         document.getElementById('resumeSubBtn').addEventListener('click', async () => {
           const btn = document.getElementById('resumeSubBtn');
           const untilStr = untilOf(subData.next_billing_at);
           const nextStr = subData.next_billing_at && typeof subData.next_billing_at.toDate === 'function' ? kstFmt(subData.next_billing_at.toDate()) : null;
-          const confirmed = await showConfirm('자동결제를 다시 켜면 구독이 계속 유지돼요.', {
-            title: '구독을 유지할까요?',
+          const confirmed = await showConfirm('자동결제를 다시 켜면 구독이 계속 유지됩니다.', {
+            title: '구독을 유지하시겠습니까?',
             okText: '구독 유지하기',
             cancelText: '닫기',
             wide: true,
@@ -919,8 +919,8 @@
               { k: '결제 방식', v: '등록된 카드로 자동결제' },
             ],
             notes: [
-              '지금 결제되는 금액은 없어요. 다음 결제일부터 월 3,000원이 결제돼요.',
-              '언제든 다시 [해지하기]로 자동결제를 끌 수 있어요.',
+              '지금 결제되는 금액은 없습니다. 다음 결제일부터 월 3,000원이 결제됩니다.',
+              '언제든 다시 [해지하기]로 자동결제를 끌 수 있습니다.',
             ],
           });
           if (!confirmed) return;
@@ -942,20 +942,20 @@
               // 응답 바디가 없어도 상태 코드로 판단
             }
             if (!res.ok || !resData || !resData.ok) {
-              const retry = await showRetryableError('처리 중 문제가 발생했어요.');
+              const retry = await showRetryableError('처리 중 문제가 발생했습니다.');
               if (retry) return runResumeSubscription(btn, untilStr, nextStr);
               setBtnLoading(btn, false);
               return;
             }
-            await showReceipt('구독이 유지됐어요. 자동결제가 다시 켜졌어요.', [
+            await showReceipt('구독이 유지되었습니다. 자동결제가 다시 켜졌습니다.', [
               { k: '현재 플랜', v: '월간 (월 3,000원)' },
               ...(nextStr ? [{ k: '다음 결제일', v: nextStr, strong: true }] : []),
               { k: '지금 결제 금액', v: '없음' },
-            ], { title: '구독 유지 완료', notes: ['언제든 [해지하기]로 자동결제를 다시 끌 수 있어요.'], wide: true });
+            ], { title: '구독 유지 완료', notes: ['언제든 [해지하기]로 자동결제를 다시 끌 수 있습니다.'], wide: true });
             window.location.reload();
           } catch (e) {
             console.error(e);
-            const retry = await showRetryableError('처리 중 문제가 발생했어요: ' + (e.message || e));
+            const retry = await showRetryableError('처리 중 문제가 발생했습니다: ' + (e.message || e));
             if (retry) return runResumeSubscription(btn, untilStr, nextStr);
             setBtnLoading(btn, false);
           }
@@ -965,18 +965,18 @@
       if (isOneTime) {
         pill.textContent = '이용 기간 종료';
         pill.className = 'status-pill canceled';
-        setGuide(['연간 이용권 기간이 끝났어요.', '다시 결제하면 계속 이용하실 수 있어요.']);
+        setGuide(['연간 이용권 기간이 끝났습니다.', '다시 결제하면 계속 이용하실 수 있습니다.']);
         actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 결제하기 →</a>`;
       } else {
         pill.textContent = '해지됨';
         pill.className = 'status-pill canceled';
-        setGuide(['구독이 해지된 상태예요.', '언제든 다시 구독할 수 있어요.']);
+        setGuide(['구독이 해지된 상태입니다.', '언제든 다시 구독할 수 있습니다.']);
         actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">다시 구독하기 →</a>`;
       }
     } else {
       pill.textContent = '구독 중이 아님';
       pill.className = 'status-pill';
-      setGuide(['구독하면 아래 기능을 쓸 수 있어요.', '사진 5,000개 이상 관리', '인생챕터 외부공유', '폰 자동 동기화']);
+      setGuide(['구독하면 아래 기능을 쓸 수 있습니다.', '사진 5,000개 이상 관리', '인생챕터 외부공유', '폰 자동 동기화']);
       actionArea.innerHTML = `<a href="pricing.html" class="btn btn-outline btn-sm">구독하러 가기 →</a>`;
     }
 
@@ -990,7 +990,7 @@
         return tb - ta;
       });
       if (list.length === 0) {
-        historyBody.innerHTML = `<tr><td colspan="5" class="empty">아직 결제내역이 없어요.</td></tr>`;
+        historyBody.innerHTML = `<tr><td colspan="5" class="empty">아직 결제내역이 없습니다.</td></tr>`;
       } else {
         historyBody.innerHTML = list
           .map(
@@ -1006,7 +1006,7 @@
           .join('');
       }
     } catch (e) {
-      historyBody.innerHTML = `<tr><td colspan="5" class="empty">결제내역을 불러오지 못했어요.</td></tr>`;
+      historyBody.innerHTML = `<tr><td colspan="5" class="empty">결제내역을 불러오지 못했습니다.</td></tr>`;
     }
   }
 
