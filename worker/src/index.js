@@ -5,6 +5,7 @@
 
 import { handlePaymentsRoute, runScheduledBilling } from "./payments.js";
 import { handleInquiryRoute } from "./inquiry.js";
+import { renderSharePage } from "./sharepage.js";
 
 const FIREBASE_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -93,6 +94,19 @@ function newShareId() {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
 }
 
+// 사진 속 관심 지점(받는 친구의 얼굴 위치, 0~1). 이상한 값이면 버린다.
+function focusFields(f) {
+  if (Array.isArray(f) && f.length === 2) {
+    const x = Number(f[0]);
+    const y = Number(f[1]);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      const c = (v) => Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000;
+      return { fx: c(x), fy: c(y) };
+    }
+  }
+  return {};
+}
+
 function sanitizeFilename(name) {
   return (name || "photo").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
 }
@@ -172,7 +186,16 @@ async function handleCreateShare(request, env) {
   }
 
   const photoFiles = form.getAll("photo");
-  if (!photoFiles.length) return jsonResponse({ error: "no_photos" }, 400);
+  // 선물 공유(2026.10): 영상은 "video" 필드, 그 대표 이미지는 같은 순서의 "poster" 필드로 온다.
+  const videoFiles = form.getAll("video");
+  const posterFiles = form.getAll("poster");
+  if (!photoFiles.length && !videoFiles.length) return jsonResponse({ error: "no_photos" }, 400);
+  const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
+  for (const v of videoFiles) {
+    if (v instanceof File && v.size > MAX_VIDEO_BYTES) {
+      return jsonResponse({ error: "video_too_large" }, 413);
+    }
+  }
 
   const { shareId, createdAt } = await _resolveShareId(
     env,
@@ -200,22 +223,82 @@ async function handleCreateShare(request, env) {
     });
     photos.push({
       key: safeName,
+      type: "photo",
       caption: (manifestInput.captions && manifestInput.captions[i]) || "",
       dt: (manifestInput.dates && manifestInput.dates[i]) || "",
       place: (manifestInput.places && manifestInput.places[i]) || "",
+      ...focusFields(manifestInput.focus && manifestInput.focus[i]),
     });
   }
 
+  const videoMeta = Array.isArray(manifestInput.videos) ? manifestInput.videos : [];
+  const videoEntries = [];
+  for (let j = 0; j < videoFiles.length; j++) {
+    const file = videoFiles[j];
+    if (!(file instanceof File)) continue;
+    const meta = videoMeta[j] || {};
+    const vName = `${uploadVersion}_v${String(j).padStart(2, "0")}_${sanitizeFilename(file.name)}`;
+    await env.SHARE_BUCKET.put(`shares/${shareId}/photos/${vName}`, file.stream(), {
+      httpMetadata: { contentType: file.type && file.type.startsWith("video/") ? file.type : "video/mp4" },
+    });
+    let posterName = "";
+    const pf = posterFiles[j];
+    if (pf instanceof File) {
+      posterName = `${uploadVersion}_v${String(j).padStart(2, "0")}_poster_${sanitizeFilename(pf.name)}`;
+      await env.SHARE_BUCKET.put(`shares/${shareId}/photos/${posterName}`, pf.stream(), {
+        httpMetadata: { contentType: pf.type || "image/jpeg" },
+      });
+    }
+    videoEntries.push({
+      key: vName,
+      type: "video",
+      poster: posterName,
+      duration: Number(meta.duration) || 0,
+      caption: meta.caption || "",
+      dt: meta.dt || "",
+      place: meta.place || "",
+    });
+  }
+
+  // 사진과 영상을 어떤 순서로 보여줄지: PC 앱이 order(["p0","v0","p1",...])를 보내면 그대로,
+  // 없으면 예전처럼 사진만(영상은 뒤에).
+  let ordered = photos.concat(videoEntries);
+  if (Array.isArray(manifestInput.order) && manifestInput.order.length) {
+    const pick = [];
+    for (const tok of manifestInput.order) {
+      const mm = /^([pv])(\d+)$/.exec(String(tok));
+      if (!mm) continue;
+      const src = mm[1] === "p" ? photos : videoEntries;
+      const item = src[parseInt(mm[2], 10)];
+      if (item && !pick.includes(item)) pick.push(item);
+    }
+    for (const it of ordered) if (!pick.includes(it)) pick.push(it);
+    ordered = pick;
+  }
+
+  // 표지로 쓸 사진: cover_ref("p3" = 올린 사진 중 4번째). 없거나 잘못되면 페이지가 첫 사진을 쓴다.
+  let cover = "";
+  const cm = /^p(\d+)$/.exec(String(manifestInput.cover_ref || ""));
+  if (cm && photos[parseInt(cm[1], 10)]) cover = photos[parseInt(cm[1], 10)].key;
+
+  const clip = (v, n) => String(v == null ? "" : v).slice(0, n);
+  const kind = ["chapter", "gift", "year"].includes(manifestInput.kind) ? manifestInput.kind : "chapter";
   const now = new Date().toISOString();
   const manifest = {
     share_id: shareId,
     owner_uid: user.uid,
+    kind,
+    kicker: clip(manifestInput.kicker, 30),
     title: manifestInput.title || "인생챕터",
     subtitle: manifestInput.subtitle || "",
     description: manifestInput.description || "",
+    to_name: clip(manifestInput.to_name, 30),
+    from_name: clip(manifestInput.from_name, 30),
+    message: clip(manifestInput.message, 2000),
+    cover,
     created_at: createdAt || now,
     updated_at: now,
-    photos,
+    photos: ordered,
   };
 
   await env.SHARE_BUCKET.put(
@@ -228,233 +311,61 @@ async function handleCreateShare(request, env) {
   return jsonResponse({ share_id: shareId, share_url: shareUrl });
 }
 
-function escapeHtml(s) {
-  return String(s || "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      }[c])
-  );
-}
-
-function renderSharePage(manifest) {
-  // 배포자(PC 앱)가 보는 "인생챕터 보기" 화면과 같은 느낌으로 렌더링한다
-  // (2026.09.21, 사용자 요청) — 큰 표지 사진 위에 제목/날짜가 겹쳐진 히어로,
-  // 그 아래 설명, 그리고 정사각형 그리드. 색상/폰트 변수는
-  // gieoksoop-PC/static/css/style.css의 :root 값과 맞췄다(브랜드 통일).
-  const photoCount = manifest.photos.length;
-  const heroKey = manifest.photos.length ? manifest.photos[0].key : null;
-  const metaBits = [manifest.subtitle, photoCount ? `사진 ${photoCount}장` : ""].filter(Boolean);
-  const metaText = metaBits.join(" · ");
-
-  const tilesHtml = manifest.photos
-    .map(
-      (p, i) => `
-      <div class="tile" data-idx="${i}">
-        <img src="/share/${manifest.share_id}/photo/${encodeURIComponent(p.key)}" loading="lazy" alt="${escapeHtml(p.caption)}">
-      </div>`
-    )
-    .join("\n");
-
-  const lbItems = manifest.photos.map((p) => ({
-    url: `/share/${manifest.share_id}/photo/${encodeURIComponent(p.key)}`,
-    dt: p.dt || "",
-    place: p.place || "",
-  }));
-  const pageDesc = manifest.description || manifest.subtitle || "기억숲으로 공유된 인생챕터입니다.";
-
-  return `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${escapeHtml(manifest.title)} — 기억숲</title>
-<meta name="description" content="${escapeHtml(pageDesc)}">
-<style>
-:root{
-  --bg:#f7f1e7;--surface-2:#f2ead9;--border-soft:#efe4cf;
-  --text:#2c2419;--text-dim:#8a7b64;--text-faint:#b7a888;
-  --accent-strong:#b0552f;
-  --radius-sm:6px;--radius-md:10px;--radius-lg:16px;
-  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","맑은 고딕",Roboto,sans-serif;
-  --font-serif:Georgia,"Noto Serif","Nanum Myeongjo","바탕",Batang,serif;
-}
-*{box-sizing:border-box;}
-body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);}
-.wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px;}
-.hero{position:relative;border-radius:var(--radius-lg);overflow:hidden;margin-bottom:26px;aspect-ratio:21/9;background:var(--surface-2);}
-.hero img{width:100%;height:100%;object-fit:cover;display:block;}
-.hero .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(28,23,18,0) 40%,rgba(28,23,18,.82) 100%);}
-.hero-overlay{position:absolute;left:0;right:0;bottom:0;padding:22px 24px;color:#fdf6e8;}
-.hero-title{font-family:var(--font-serif);font-size:28px;font-weight:600;letter-spacing:-.008em;text-shadow:0 2px 12px rgba(0,0,0,.4);margin:0;}
-.hero-meta{font-size:13px;color:rgba(253,246,232,.88);margin-top:8px;}
-.desc{font-size:14.8px;line-height:1.8;color:var(--text);white-space:pre-wrap;margin-bottom:28px;}
-.section-title{font-size:11.5px;font-weight:700;color:var(--text-dim);letter-spacing:.06em;margin-bottom:11px;text-transform:uppercase;}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;}
-.tile{position:relative;aspect-ratio:1/1;border-radius:var(--radius-sm);overflow:hidden;background:var(--surface-2);border:1px solid var(--border-soft);cursor:zoom-in;}
-.tile img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s;}
-.tile:hover img{transform:scale(1.04);}
-footer{margin-top:48px;text-align:center;color:var(--text-faint);font-size:12.5px;}
-footer a{color:var(--accent-strong);text-decoration:none;}
-/* 라이트박스: PC 앱의 "큰 사진 보기"(static/css/style.css .lightbox 계열)와 같은
-   느낌으로 맞춤(2026.09.21, 사용자 요청) — 색/크기/버튼 배치를 그대로 가져오되,
-   즐겨찾기·삭제·날짜수정처럼 로그인한 배포자만 쓰는 편집 기능은 뺐다. */
-.lightbox{
-  position:fixed;inset:0;background:rgba(6,9,7,.94);z-index:2000;
-  display:none;align-items:center;justify-content:center;flex-direction:column;
-}
-.lightbox.open{display:flex;}
-.lightbox-media{max-width:88vw;max-height:78vh;display:flex;align-items:center;justify-content:center;}
-.lightbox-media img{max-width:88vw;max-height:78vh;border-radius:8px;object-fit:contain;display:block;}
-.lightbox-close,.lightbox-nav{
-  position:absolute;border:none;background:rgba(255,255,255,.06);color:#fff;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;
-}
-.lightbox-close{top:22px;right:26px;width:38px;height:38px;border-radius:50%;}
-.lightbox-close:hover{background:rgba(255,255,255,.14);}
-.lightbox-close svg{width:16px;height:16px;}
-.lightbox-position{
-  position:absolute;top:33px;left:50%;transform:translateX(-50%);
-  color:rgba(255,255,255,.72);font-size:12.6px;
-}
-.lightbox-nav{top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;}
-.lightbox-nav:hover{background:rgba(255,255,255,.16);}
-.lightbox-nav:disabled{opacity:.25;cursor:default;pointer-events:none;}
-.lightbox-nav svg{width:20px;height:20px;}
-.lightbox-prev{left:22px;}
-.lightbox-next{right:22px;}
-.lightbox-caption{color:rgba(255,255,255,.72);font-size:12.6px;margin-top:16px;text-align:center;}
-.lightbox-place{display:none;align-items:center;justify-content:center;gap:5px;color:rgba(255,255,255,.5);font-size:12px;margin-top:6px;}
-.lightbox-place.show{display:flex;}
-.lightbox-place svg{width:13px;height:13px;flex:none;}
-@media (max-width:640px){
-  .hero{aspect-ratio:4/3;}
-  .hero-title{font-size:22px;}
-  .lightbox-nav{width:38px;height:38px;}
-  .lightbox-nav svg{width:17px;height:17px;}
-}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="hero">
-    ${heroKey ? `<img src="/share/${manifest.share_id}/photo/${encodeURIComponent(heroKey)}" alt="">` : ""}
-    <div class="scrim"></div>
-    <div class="hero-overlay">
-      <h1 class="hero-title">${escapeHtml(manifest.title)}</h1>
-      ${metaText ? `<div class="hero-meta">${escapeHtml(metaText)}</div>` : ""}
-    </div>
-  </div>
-  ${manifest.description ? `<div class="desc">${escapeHtml(manifest.description)}</div>` : ""}
-  <div class="section-title">사진</div>
-  <div class="grid" id="grid">
-    ${tilesHtml}
-  </div>
-  <footer>기억숲(LIFE ARCHIVE)으로 공유된 인생챕터입니다 · <a href="https://gieoksoop.com">gieoksoop.com</a></footer>
-</div>
-
-<div class="lightbox" id="lightbox">
-  <div class="lightbox-position" id="lbPosition"></div>
-  <button type="button" class="lightbox-close" id="lbClose" aria-label="닫기">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
-  </button>
-  <button type="button" class="lightbox-nav lightbox-prev" id="lbPrev" aria-label="이전 사진">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-  </button>
-  <div class="lightbox-media"><img id="lbImg" src="" alt=""></div>
-  <button type="button" class="lightbox-nav lightbox-next" id="lbNext" aria-label="다음 사진">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-  </button>
-  <div class="lightbox-caption" id="lbCaption"></div>
-  <div class="lightbox-place" id="lbPlace">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.1 7-11.5A7 7 0 0 0 5 9.5C5 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/></svg>
-    <span id="lbPlaceText"></span>
-  </div>
-</div>
-
-<script>
-(function(){
-  var items = ${JSON.stringify(lbItems)};
-  var idx = 0;
-  var lb = document.getElementById('lightbox');
-  var lbImg = document.getElementById('lbImg');
-  var lbPos = document.getElementById('lbPosition');
-  var lbPrev = document.getElementById('lbPrev');
-  var lbNext = document.getElementById('lbNext');
-  var lbCaption = document.getElementById('lbCaption');
-  var lbPlace = document.getElementById('lbPlace');
-  var lbPlaceText = document.getElementById('lbPlaceText');
-  var WEEKDAYS = ['일','월','화','수','목','금','토'];
-  function fmtDate(iso){
-    if(!iso) return '';
-    var d = new Date(iso);
-    if(isNaN(d.getTime())) return '';
-    var pad = function(n){ return String(n).padStart(2,'0'); };
-    return d.getFullYear() + '.' + pad(d.getMonth()+1) + '.' + pad(d.getDate()) + ' (' + WEEKDAYS[d.getDay()] + ')';
-  }
-  function show(i){
-    if(!items.length) return;
-    if(i < 0 || i >= items.length) return; // 앱과 동일하게 끝에서 순환하지 않음
-    idx = i;
-    var it = items[idx];
-    lbImg.src = it.url;
-    lbPos.textContent = (idx + 1) + ' / ' + items.length;
-    lbPrev.disabled = idx <= 0;
-    lbNext.disabled = idx >= items.length - 1;
-    lbCaption.textContent = fmtDate(it.dt);
-    if(it.place){
-      lbPlaceText.textContent = it.place;
-      lbPlace.classList.add('show');
-    } else {
-      lbPlace.classList.remove('show');
-    }
-  }
-  function openAt(i){ show(i); lb.classList.add('open'); }
-  function close(){ lb.classList.remove('open'); lbImg.src=''; }
-  var gridEl = document.getElementById('grid');
-  if(gridEl){
-    gridEl.addEventListener('click', function(e){
-      var tile = e.target.closest('.tile');
-      if(!tile) return;
-      openAt(parseInt(tile.getAttribute('data-idx'), 10) || 0);
-    });
-  }
-  document.getElementById('lbClose').onclick = close;
-  lbPrev.onclick = function(){ show(idx - 1); };
-  lbNext.onclick = function(){ show(idx + 1); };
-  lb.addEventListener('click', function(e){ if(e.target === lb) close(); });
-  document.addEventListener('keydown', function(e){
-    if(!lb.classList.contains('open')) return;
-    if(e.key === 'Escape') close();
-    else if(e.key === 'ArrowLeft') show(idx - 1);
-    else if(e.key === 'ArrowRight') show(idx + 1);
-  });
-})();
-</script>
-</body>
-</html>`;
-}
-async function handleViewShare(shareId, env) {
+async function handleViewShare(shareId, env, origin) {
   const obj = await env.SHARE_BUCKET.get(`shares/${shareId}/manifest.json`);
   if (!obj) return new Response("공유 링크를 찾을 수 없어요.", { status: 404 });
   const manifest = await obj.json();
-  const html = renderSharePage(manifest);
+  const html = renderSharePage(manifest, origin);
   return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      // 받은 사람이 아니면 검색에 노출되지 않도록
+      "X-Robots-Tag": "noindex, nofollow",
+    },
   });
 }
 
-async function handlePhoto(shareId, photoKey, env) {
+// 사진과 영상을 내려준다. 영상은 브라우저가 중간부터 재생(시킹)할 수 있어야 해서
+// Range 요청(206 Partial Content)을 지원한다(2026.10 선물 공유 추가).
+async function handlePhoto(shareId, photoKey, env, request) {
+  if (!/^[A-Za-z0-9._-]+$/.test(photoKey)) return new Response("not found", { status: 404 });
   const key = `shares/${shareId}/photos/${photoKey}`;
+  const range = request && request.headers.get("Range");
+  if (range) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    const head = await env.SHARE_BUCKET.head(key);
+    if (!head) return new Response("not found", { status: 404 });
+    const size = head.size;
+    if (m && (m[1] !== "" || m[2] !== "")) {
+      let start, end;
+      if (m[1] === "") {                 // bytes=-N : 끝에서 N바이트
+        start = Math.max(0, size - parseInt(m[2], 10));
+        end = size - 1;
+      } else {
+        start = parseInt(m[1], 10);
+        end = m[2] === "" ? size - 1 : Math.min(parseInt(m[2], 10), size - 1);
+      }
+      if (start >= size || start > end) {
+        return new Response("range not satisfiable", {
+          status: 416, headers: { "Content-Range": `bytes */${size}` },
+        });
+      }
+      const obj = await env.SHARE_BUCKET.get(key, { range: { offset: start, length: end - start + 1 } });
+      if (!obj) return new Response("not found", { status: 404 });
+      const h = new Headers();
+      obj.writeHttpMetadata(h);
+      h.set("Content-Range", `bytes ${start}-${end}/${size}`);
+      h.set("Content-Length", String(end - start + 1));
+      h.set("Accept-Ranges", "bytes");
+      h.set("Cache-Control", "public, max-age=31536000, immutable");
+      return new Response(obj.body, { status: 206, headers: h });
+    }
+  }
   const obj = await env.SHARE_BUCKET.get(key);
   if (!obj) return new Response("not found", { status: 404 });
   const headers = new Headers();
   obj.writeHttpMetadata(headers);
+  headers.set("Accept-Ranges", "bytes");
   headers.set("Cache-Control", "public, max-age=31536000, immutable");
   return new Response(obj.body, { headers });
 }
@@ -480,12 +391,12 @@ export default {
 
     const photoMatch = path.match(/^\/share\/([a-zA-Z0-9]+)\/photo\/(.+)$/);
     if (photoMatch && request.method === "GET") {
-      return handlePhoto(photoMatch[1], decodeURIComponent(photoMatch[2]), env);
+      return handlePhoto(photoMatch[1], decodeURIComponent(photoMatch[2]), env, request);
     }
 
     const viewMatch = path.match(/^\/share\/([a-zA-Z0-9]+)\/?$/);
     if (viewMatch && request.method === "GET") {
-      return handleViewShare(viewMatch[1], env);
+      return handleViewShare(viewMatch[1], env, url.origin);
     }
 
     return new Response("not found", { status: 404 });
