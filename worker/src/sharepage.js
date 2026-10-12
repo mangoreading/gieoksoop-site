@@ -11,6 +11,8 @@
 //   photos: [{key, type: "photo"|"video", caption, dt, place, poster?, duration?}]
 //     · 영상은 key가 mp4 파일, poster가 대표 이미지 파일명.
 
+import { renderGiftPage } from "./giftpage.js";
+
 export function escapeHtml(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -528,6 +530,8 @@ function renderGrid(m) {
 }
 
 export function renderSharePage(manifest, origin) {
+  // 선물은 전용 화면(세로 포토에세이)이다. 챕터·연말 결산은 아래 기존 화면.
+  if (manifest && manifest.kind === "gift") return renderGiftPage(manifest, origin);
   const m = manifest;
   const photos = m.photos || [];
   const ck = coverKey(m);

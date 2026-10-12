@@ -107,6 +107,31 @@ function focusFields(f) {
   return {};
 }
 
+// 사진 원래 크기(가로, 세로 px). 받는 사람 화면이 사진 자리를 미리 잡고 세로 사진을 짝지어 놓는 데 쓴다.
+function dimFields(d) {
+  if (Array.isArray(d) && d.length === 2) {
+    const w = Math.round(Number(d[0]));
+    const h = Math.round(Number(d[1]));
+    if (w > 0 && h > 0 && w <= 20000 && h <= 20000) return { w, h };
+  }
+  return {};
+}
+
+// 날짜별 한 줄: {"2023-08-08": "글"} — 날짜 모양이 아닌 키와 빈 글은 버리고, 최대 60일·120자.
+function dayLines(v) {
+  const out = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return out;
+  let n = 0;
+  for (const k of Object.keys(v)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+    const t = String(v[k] == null ? "" : v[k]).trim().slice(0, 120);
+    if (!t) continue;
+    out[k] = t;
+    if (++n >= 60) break;
+  }
+  return out;
+}
+
 function sanitizeFilename(name) {
   return (name || "photo").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
 }
@@ -228,6 +253,7 @@ async function handleCreateShare(request, env) {
       dt: (manifestInput.dates && manifestInput.dates[i]) || "",
       place: (manifestInput.places && manifestInput.places[i]) || "",
       ...focusFields(manifestInput.focus && manifestInput.focus[i]),
+      ...dimFields(manifestInput.dims && manifestInput.dims[i]),
     });
   }
 
@@ -257,6 +283,7 @@ async function handleCreateShare(request, env) {
       caption: meta.caption || "",
       dt: meta.dt || "",
       place: meta.place || "",
+      ...dimFields(meta.dims),
     });
   }
 
@@ -295,6 +322,8 @@ async function handleCreateShare(request, env) {
     to_name: clip(manifestInput.to_name, 30),
     from_name: clip(manifestInput.from_name, 30),
     message: clip(manifestInput.message, 2000),
+    theme: manifestInput.theme === "white" ? "white" : "paper",
+    day_lines: dayLines(manifestInput.day_lines),
     cover,
     created_at: createdAt || now,
     updated_at: now,

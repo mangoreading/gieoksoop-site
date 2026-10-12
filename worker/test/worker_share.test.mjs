@@ -144,7 +144,7 @@ test('얼굴 위치(focus)와 표지(cover_ref) 저장, 이상한 값은 버린�
   assert.equal(mf.cover, mf.photos[1].key);
   const v = await worker.fetch(new Request(`https://gieoksoop.com/share/${share_id}`), env);
   const html = await v.text();
-  assert.ok(html.includes('object-position:30.0% 40.0%'));
+  assert.ok(html.includes('object-position:100.0% 0.0%'));   // 선물 화면의 표지(1번 사진)는 얼굴 위치를 따른다
   assert.ok(html.includes('/fonts/share/share-sans.woff2'));
   assert.ok(!html.includes('googleapis') && !html.includes('jsdelivr'));
 });
@@ -154,4 +154,37 @@ test('잘못된 cover_ref는 무시', async () => {
   const {share_id} = await r.json();
   const mf = JSON.parse((await env.SHARE_BUCKET.get(`shares/${share_id}/manifest.json`)).body.toString());
   assert.equal(mf.cover, '');
+});
+
+test('선물 화면: 테마·날짜별 한 줄·사진 크기가 저장되고 포토에세이로 그려진다', async () => {
+  const man = {kind:'gift', title:'캘리포니아', subtitle:'2023.08.08 – 08.09 · LA', to_name:'이린', from_name:'인호', message:'같이 다녀온 시간,\n고마워.',
+    theme:'white', day_lines:{'2023-08-08':'  도착한 날  ', '2023-08-09':'', 'bad-key':'x', '2023-08-10':'<b>없는 날</b>'},
+    captions:['','','',''], dates:['2023-08-08T10:00:00','2023-08-08T11:00:00','2023-08-09T10:00:00','2023-08-09T12:00:00'], places:['LA','LA','',''],
+    dims:[[3000,4000],[3000,4000],[4000,3000],[0,5]], cover_ref:'p2'};
+  const r = await create(form(man, ['a.jpg','b.jpg','c.jpg','d.jpg']));
+  const {share_id} = await r.json();
+  const mf = JSON.parse((await env.SHARE_BUCKET.get(`shares/${share_id}/manifest.json`)).body.toString());
+  assert.equal(mf.theme, 'white');
+  assert.deepEqual(mf.day_lines, {'2023-08-08':'도착한 날', '2023-08-10':'<b>없는 날</b>'});
+  assert.equal(mf.photos[0].w, 3000); assert.equal(mf.photos[0].h, 4000);
+  assert.equal(mf.photos[3].w, undefined);
+  const html = await (await worker.fetch(new Request(`https://gieoksoop.com/share/${share_id}`), env)).text();
+  assert.ok(html.includes('class="theme-white"'));
+  assert.ok(html.includes('class="pair rv"'), '세로 사진 두 장은 한 줄에 나란히');
+  assert.ok(html.includes('DAY 1') && html.includes('DAY 2'));
+  assert.ok(html.includes('도착한 날'));
+  assert.ok(!html.includes('<b>없는 날</b>'));
+  assert.ok(!html.includes('처음부터 보기'), '선물 화면엔 스토리 재생이 없다');
+  assert.ok(html.includes('이린에게') && html.includes('From. 인호'));
+});
+
+test('선물 화면: 테마를 안 보내면 paper, 챕터는 기존 화면 그대로', async () => {
+  const g = await create(form({kind:'gift', title:'t', captions:[''], dates:[''], places:['']}, ['a.jpg']));
+  const gid = (await g.json()).share_id;
+  const gh = await (await worker.fetch(new Request(`https://gieoksoop.com/share/${gid}`), env)).text();
+  assert.ok(gh.includes('class="theme-paper"'));
+  const c = await create(form({title:'챕터', captions:['x']}, ['a.jpg']));
+  const cid = (await c.json()).share_id;
+  const ch = await (await worker.fetch(new Request(`https://gieoksoop.com/share/${cid}`), env)).text();
+  assert.ok(ch.includes('처음부터 보기'));
 });
