@@ -34,8 +34,14 @@ export const db = getFirestore(app);
 // 이메일 인증 / 비밀번호 재설정 링크가 클릭됐을 때 도착할 페이지.
 // 배포된 도메인이 바뀌어도(gieoksoop.com, admin.gieoksoop.com 등 신경 쓸 필요 없이)
 // 항상 "지금 이 사이트의 auth-action.html"을 가리키도록 origin을 그대로 사용한다.
+// Firebase 기본 처리 페이지가 코드를 처리한 뒤 이 주소로 돌려보내므로(mode/oobCode 없이),
+// 어떤 메일에서 왔는지 구분할 수 있게 done 파라미터를 붙여 둔다.
 const actionCodeSettings = {
-  url: `${window.location.origin}/auth-action.html`,
+  url: `${window.location.origin}/auth-action.html?done=verify`,
+  handleCodeInApp: true,
+};
+const resetCodeSettings = {
+  url: `${window.location.origin}/auth-action.html?done=reset`,
   handleCodeInApp: true,
 };
 
@@ -75,7 +81,7 @@ export async function completeEmailVerification(oobCode) {
 
 // 비밀번호 찾기: 재설정 링크 메일 발송
 export async function requestPasswordReset(email) {
-  await sendPasswordResetEmail(auth, email, actionCodeSettings);
+  await sendPasswordResetEmail(auth, email, resetCodeSettings);
 }
 
 // auth-action.html: 비밀번호 재설정 링크(mode=resetPassword)의 코드가 유효한지 확인하고

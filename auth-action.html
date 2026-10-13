@@ -107,7 +107,13 @@
 
   async function run() {
     if (!oobCode) {
-      renderUnknown();
+      // 메일 링크가 Firebase 기본 처리 페이지를 거쳐 파라미터 없이 넘어온 경우:
+      // 인증은 이미 처리된 상태이므로 안내 후 계정 화면으로 보낸다.
+      const done = params.get('done');
+      if (done === 'verify') { renderVerifiedDone(); }
+      else if (done === 'reset') { renderResetDone(); }
+      else if (!mode) { renderNoParams(); }
+      else { renderUnknown(); }
       return;
     }
     if (mode === 'verifyEmail') {
@@ -201,6 +207,31 @@
         submitBtn.textContent = '비밀번호 변경';
       }
     });
+  }
+
+  function renderVerifiedDone() {
+    card.innerHTML = `
+      <h2>이메일 인증이 완료됐어요</h2>
+      <p class="desc">이제 기억숲의 모든 기능을 이용할 수 있어요.<br>회원가입 창이 열려 있다면 <b>[인증 완료]</b> 버튼을 눌러 주세요.</p>
+      <a class="btn btn-primary btn-block" href="account.html">내 계정으로 이동</a>
+    `;
+  }
+
+  function renderResetDone() {
+    card.innerHTML = `
+      <h2>비밀번호 변경을 마쳤어요</h2>
+      <p class="desc">새 비밀번호로 로그인해 주세요.</p>
+      <a class="btn btn-primary btn-block" href="login.html">로그인하러 가기</a>
+    `;
+  }
+
+  function renderNoParams() {
+    card.innerHTML = `
+      <h2>이메일 인증을 확인해 주세요</h2>
+      <p class="desc">메일의 인증 링크를 누르셨다면 인증은 이미 처리되었을 수 있어요.<br>회원가입 화면으로 돌아가 <b>[인증 완료]</b> 버튼을 누르거나, 아래 버튼으로 이동해 주세요.</p>
+      <a class="btn btn-primary btn-block" href="account.html">내 계정으로 가기</a>
+      <a class="btn btn-outline btn-block" href="index.html" style="margin-top:8px;">홈으로</a>
+    `;
   }
 
   function renderUnknown() {
