@@ -90,6 +90,24 @@ img,video{display:block;max-width:100%;}
 footer{padding:90px 20px calc(env(safe-area-inset-bottom,0px) + 44px);text-align:center;font-size:11.5px;letter-spacing:.16em;color:var(--faint);}
 footer a{color:inherit;text-decoration:none;}
 
+/* 저장·마음 남기기 */
+.after{padding:96px 0 0;text-align:center;}
+.dl{display:inline-block;padding:11px 22px;border:1px solid var(--line);border-radius:99px;color:var(--ink);text-decoration:none;font-size:14px;background:transparent;}
+.dl:hover{border-color:var(--dim);}
+.dl-hint{font-size:12px;color:var(--faint);margin-top:10px;line-height:1.6;}
+.react{margin:64px auto 0;max-width:420px;text-align:left;}
+.react h2{font-family:var(--serif);font-weight:600;font-size:16px;text-align:center;margin:0 0 6px;}
+.react .rsub{font-size:12.5px;color:var(--faint);text-align:center;margin-bottom:18px;}
+.react .heart{display:flex;margin:0 auto 14px;align-items:center;gap:6px;padding:9px 18px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--dim);font:inherit;font-size:14px;cursor:pointer;}
+.react .heart.on{color:#c2185b;border-color:#c2185b;}
+.react input,.react textarea{width:100%;font:inherit;font-size:15px;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:10px;}
+.react textarea{resize:vertical;min-height:84px;line-height:1.7;font-family:var(--serif);}
+.react input:focus,.react textarea:focus{outline:none;border-color:var(--dim);}
+.react .send{display:block;width:100%;padding:12px;border:0;border-radius:10px;background:var(--ink);color:var(--bg);font:inherit;font-size:15px;cursor:pointer;}
+.react .send:disabled{opacity:.45;cursor:default;}
+.react .msg{text-align:center;font-size:13.5px;color:var(--dim);margin-top:12px;min-height:1.4em;}
+.react .hp{position:absolute;left:-9999px;opacity:0;height:0;width:0;}
+
 /* 크게 보기 */
 .zoom{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:var(--bg);cursor:zoom-out;padding:10px;}
 .zoom.open{display:flex;}
@@ -121,6 +139,26 @@ const CLIENT_JS = String.raw`
     zi.src = img.currentSrc || img.src; z.classList.add('open'); document.body.style.overflow = 'hidden';
   });
   document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+
+  var rf = document.getElementById('react');
+  if(rf){
+    var heart = false, hb = rf.querySelector('.heart'), sb = rf.querySelector('.send'),
+        tx = rf.querySelector('textarea'), nm = rf.querySelector('input[name=name]'), hp = rf.querySelector('input[name=website]'),
+        msg = rf.querySelector('.msg');
+    hb.addEventListener('click', function(){ heart = !heart; hb.classList.toggle('on', heart); hb.querySelector('b').textContent = heart ? '♥' : '♡'; });
+    sb.addEventListener('click', function(){
+      if(!heart && !tx.value.trim()){ msg.textContent = '♥를 누르거나 한마디를 적어 주세요.'; return; }
+      sb.disabled = true; msg.textContent = '보내는 중…';
+      fetch('/api/share/react', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({share_id: rf.dataset.share, name: nm.value, text: tx.value, heart: heart, website: hp.value})})
+        .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return {ok: r.ok, d: d}; }); })
+        .then(function(x){
+          if(x.ok){ msg.textContent = '마음이 전해졌어요. 고마워요.'; tx.value = ''; heart = false; hb.classList.remove('on'); hb.querySelector('b').textContent = '♡'; setTimeout(function(){ sb.disabled = false; }, 4000); }
+          else { msg.textContent = (x.d && x.d.error === 'too_many') ? '더 이상 남길 수 없어요.' : '보내지 못했어요. 잠시 뒤 다시 해 주세요.'; sb.disabled = false; }
+        })
+        .catch(function(){ msg.textContent = '보내지 못했어요. 인터넷을 확인해 주세요.'; sb.disabled = false; });
+    });
+  }
 })();
 `;
 
@@ -213,6 +251,23 @@ export function renderGiftPage(manifest, origin) {
     ${m.from_name ? `<div class="letter-from">${esc(m.from_name)}가</div>` : ""}
   </section>` : "";
 
+  const canZip = m.allow_download !== false && photos.some((p) => Number.isInteger(p.crc) && Number.isInteger(p.size) && p.size > 0);
+  const dl = canZip ? `
+    <a class="dl" href="/share/${esc(m.share_id)}/download.zip" download>사진·영상 한꺼번에 저장</a>
+    <div class="dl-hint">압축 파일(zip) 하나로 저장돼요. 아이폰은 '파일' 앱에, 안드로이드는 '다운로드'에 저장돼요.</div>` : "";
+  const reactHtml = `
+  <section class="react" id="react" data-share="${esc(m.share_id)}">
+    <h2>마음 남기기</h2>
+    <div class="rsub">${m.from_name ? esc(m.from_name) + "에게 " : ""}한마디 전할 수 있어요. 로그인은 필요 없어요.</div>
+    <button class="heart" type="button" aria-label="좋았어요"><b>♡</b> 좋았어요</button>
+    <input name="name" maxlength="20" placeholder="이름 (비워도 돼요)" value="${esc(m.to_name && !String(m.to_name).includes(",") ? m.to_name : "")}" autocomplete="off">
+    <textarea maxlength="500" placeholder="한마디 남겨요"></textarea>
+    <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+    <button class="send" type="button">보내기</button>
+    <div class="msg" aria-live="polite"></div>
+  </section>`;
+  const afterHtml = `<div class="after col">${dl}${reactHtml}</div>`;
+
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -244,6 +299,7 @@ ${coverUrl ? `<meta property="og:image" content="${esc(abs(coverUrl))}">` : ""}
 ${letter}
 <main>${daysHtml}</main>
 <div class="fin col rv">${m.from_name ? `<div class="from">From. ${esc(m.from_name)}</div>` : ""}</div>
+${afterHtml}
 <footer><a href="https://gieoksoop.com">기억숲 · LIFE ARCHIVE</a></footer>
 <div class="zoom" id="zoom" aria-hidden="true"><img alt=""></div>
 <script>${CLIENT_JS}</script>

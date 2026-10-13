@@ -6,6 +6,7 @@
 import { handlePaymentsRoute, runScheduledBilling } from "./payments.js";
 import { handleInquiryRoute } from "./inquiry.js";
 import { renderSharePage } from "./sharepage.js";
+import { planZip, zipStream, entryName } from "./zipstream.js";
 
 const FIREBASE_JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -132,6 +133,12 @@ function dayLines(v) {
   return out;
 }
 
+// 파일 CRC32(PC 앱이 계산해 보낸 값, 0~2^32-1 정수). 이상하면 버린다 — ZIP 내려받기를 못 쓰게 될 뿐이다.
+function crcField(v) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= 0xffffffff ? { crc: n } : {};
+}
+
 function sanitizeFilename(name) {
   return (name || "photo").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
 }
@@ -254,6 +261,8 @@ async function handleCreateShare(request, env) {
       place: (manifestInput.places && manifestInput.places[i]) || "",
       ...focusFields(manifestInput.focus && manifestInput.focus[i]),
       ...dimFields(manifestInput.dims && manifestInput.dims[i]),
+      size: file.size,
+      ...crcField(manifestInput.crcs && manifestInput.crcs[i]),
     });
   }
 
@@ -284,6 +293,8 @@ async function handleCreateShare(request, env) {
       dt: meta.dt || "",
       place: meta.place || "",
       ...dimFields(meta.dims),
+      size: file.size,
+      ...crcField(meta.crc),
     });
   }
 
@@ -319,10 +330,11 @@ async function handleCreateShare(request, env) {
     title: manifestInput.title || "인생챕터",
     subtitle: manifestInput.subtitle || "",
     description: manifestInput.description || "",
-    to_name: clip(manifestInput.to_name, 30),
+    to_name: clip(manifestInput.to_name, 60),
     from_name: clip(manifestInput.from_name, 30),
     message: clip(manifestInput.message, 2000),
     theme: manifestInput.theme === "white" ? "white" : "paper",
+    allow_download: manifestInput.allow_download !== false,
     day_lines: dayLines(manifestInput.day_lines),
     cover,
     created_at: createdAt || now,
@@ -399,6 +411,89 @@ async function handlePhoto(shareId, photoKey, env, request) {
   return new Response(obj.body, { headers });
 }
 
+// ---------------- 받는 사람: 한꺼번에 저장(ZIP) ----------------
+async function handleDownloadZip(shareId, env) {
+  const obj = await env.SHARE_BUCKET.get(`shares/${shareId}/manifest.json`);
+  if (!obj) return new Response("공유 링크를 찾을 수 없어요.", { status: 404 });
+  const manifest = await obj.json();
+  if (manifest.kind !== "gift" || manifest.allow_download === false) {
+    return new Response("이 선물은 한꺼번에 저장할 수 없어요.", { status: 403 });
+  }
+  const entries = [];
+  (manifest.photos || []).forEach((p, idx) => {
+    if (Number.isInteger(p.crc) && Number.isInteger(p.size) && p.size > 0) {
+      entries.push({ name: entryName(p, idx), size: p.size, crc: p.crc, key: p.key });
+    }
+  });
+  if (!entries.length) {
+    return new Response("예전에 만든 선물이라 한꺼번에 저장할 수 없어요. 보낸 사람에게 다시 보내 달라고 해 주세요.", { status: 409 });
+  }
+  const plan = planZip(entries, new Date(manifest.updated_at || Date.now()));
+  const stream = zipStream(entries, plan, (e) => env.SHARE_BUCKET.get(`shares/${shareId}/photos/${e.key}`));
+  const title = String(manifest.title || "선물").replace(/[\\/:*?"<>|\r\n]+/g, " ").trim().slice(0, 40) || "선물";
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Length": String(plan.total),
+      "Content-Disposition": `attachment; filename="gift.zip"; filename*=UTF-8''${encodeURIComponent(title)}.zip`,
+      "Cache-Control": "private, no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+    },
+  });
+}
+
+// ---------------- 받는 사람: 마음 남기기(♥·한마디) ----------------
+// 로그인 없이 닉네임만. 한 번에 R2 객체 하나씩(shares/<id>/reactions/...) 쌓아서 동시에 와도 서로 덮어쓰지 않는다.
+const MAX_REACTIONS = 200;
+
+async function handleReact(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResponse({ error: "bad_json" }, 400); }
+  const shareId = String(body.share_id || "");
+  if (!/^[a-zA-Z0-9]+$/.test(shareId)) return jsonResponse({ error: "bad_share" }, 400);
+  if (body.website) return jsonResponse({ ok: true });      // 자동 입력 봇이 채우는 숨김 칸 — 조용히 무시
+  const head = await env.SHARE_BUCKET.head(`shares/${shareId}/manifest.json`);
+  if (!head) return jsonResponse({ error: "not_found" }, 404);
+  const clip = (v, n) => String(v == null ? "" : v).replace(/\s+/g, " ").trim().slice(0, n);
+  const name = clip(body.name, 20);
+  const text = String(body.text == null ? "" : body.text).replace(/\r/g, "").trim().slice(0, 500);
+  const heart = body.heart === true;
+  if (!text && !heart) return jsonResponse({ error: "empty" }, 400);
+  const listed = await env.SHARE_BUCKET.list({ prefix: `shares/${shareId}/reactions/`, limit: MAX_REACTIONS + 1 });
+  if ((listed.objects || []).length >= MAX_REACTIONS) return jsonResponse({ error: "too_many" }, 429);
+  const at = new Date().toISOString();
+  const id = `${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`;
+  await env.SHARE_BUCKET.put(`shares/${shareId}/reactions/${id}.json`,
+    JSON.stringify({ id, name, text, heart, at }),
+    { httpMetadata: { contentType: "application/json; charset=utf-8" } });
+  return jsonResponse({ ok: true });
+}
+
+// 보낸 사람(소유자)만 받은 마음을 읽는다.
+async function handleReactions(request, env, url) {
+  const authHeader = request.headers.get("Authorization") || "";
+  const match = authHeader.match(/^Bearer (.+)$/);
+  if (!match) return jsonResponse({ error: "missing_token" }, 401);
+  let user;
+  try { user = await verifyFirebaseIdToken(match[1], env.FIREBASE_PROJECT_ID); }
+  catch (e) { return jsonResponse({ error: "invalid_token" }, 401); }
+  const shareId = String(url.searchParams.get("share_id") || "");
+  if (!/^[a-zA-Z0-9]+$/.test(shareId)) return jsonResponse({ error: "bad_share" }, 400);
+  const mo = await env.SHARE_BUCKET.get(`shares/${shareId}/manifest.json`);
+  if (!mo) return jsonResponse({ error: "not_found" }, 404);
+  const manifest = await mo.json();
+  if (manifest.owner_uid !== user.uid) return jsonResponse({ error: "forbidden" }, 403);
+  const listed = await env.SHARE_BUCKET.list({ prefix: `shares/${shareId}/reactions/`, limit: MAX_REACTIONS });
+  const items = [];
+  for (const o of listed.objects || []) {
+    const r = await env.SHARE_BUCKET.get(o.key);
+    if (!r) continue;
+    try { items.push(await r.json()); } catch (e) { /* 깨진 항목은 건너뜀 */ }
+  }
+  items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return jsonResponse({ ok: true, items });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -416,6 +511,18 @@ export default {
 
     if (path === "/api/share/create" && request.method === "POST") {
       return handleCreateShare(request, env);
+    }
+
+    if (path === "/api/share/react" && request.method === "POST") {
+      return handleReact(request, env);
+    }
+    if (path === "/api/share/reactions" && request.method === "GET") {
+      return handleReactions(request, env, url);
+    }
+
+    const zipMatch = path.match(/^\/share\/([a-zA-Z0-9]+)\/download\.zip$/);
+    if (zipMatch && request.method === "GET") {
+      return handleDownloadZip(zipMatch[1], env);
     }
 
     const photoMatch = path.match(/^\/share\/([a-zA-Z0-9]+)\/photo\/(.+)$/);
