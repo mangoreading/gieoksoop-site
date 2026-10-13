@@ -340,7 +340,8 @@
   // ---------------- 카드 변경 ----------------
   // storeId/channelKey는 비밀값이 아니라 프론트엔드에 그대로 노출되는 공개 식별자.
   const PORTONE_STORE_ID = 'store-9b3f8aa5-ea5a-4941-a366-56d89fdb6ed2';
-  const PORTONE_CHANNEL_KEY = 'channel-key-2c2cfc86-6056-47cb-a1da-9ca271f3035a';
+  // 월간(정기결제, MID MOI4161506) 실결제 채널(2026.10.13 적용). 되돌릴 때(테스트 채널): channel-key-2c2cfc86-6056-47cb-a1da-9ca271f3035a
+  const PORTONE_CHANNEL_KEY = 'channel-key-676cf2e8-691b-4b81-9804-ffb717af8656';
 
   function friendlyBillingError(rawMessage) {
     const msg = String(rawMessage || '');
