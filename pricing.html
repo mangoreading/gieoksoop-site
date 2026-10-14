@@ -715,6 +715,9 @@
         billingKeyMethod: 'CARD',
         issueId: 'bk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
         issueName: PLAN_DISPLAY[plan].issueName,
+        // 카드 등록창에 상품가격을 보여 주기 위한 표시용 값(실제 청구 금액과 무관, 첫 결제는 서버가 처리).
+        displayAmount: PLAN_DISPLAY[plan].amount,
+        currency: 'KRW',
         customer: {
           customerId: user.uid,
           fullName: fullName,
