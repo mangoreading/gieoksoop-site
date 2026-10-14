@@ -3,7 +3,8 @@
 > 기억숲은 폴더만 연결하면 시간·장소·사람으로 흩어진 사진과 영상을 자동으로 묶어 "내 인생의 타임라인"으로 만들어주는 PC 앱(Windows·macOS)입니다. 사진 원본은 사용자의 컴퓨터를 떠나지 않으며, 정리한 기록은 인생 챕터와 영상으로 남길 수 있습니다.
 > (English: Gieoksoop / LIFE ARCHIVE is a desktop app for Windows and macOS that turns scattered photos and videos into a personal life timeline, grouping them by time, place and people. Original photos stay on the user's own computer.)
 
-현재 상태: PC 앱 출시 준비 중. 홈페이지에서 가입하면 출시 소식을 받을 수 있습니다.
+현재 상태: PC 앱(Windows·macOS) 출시 준비 중. 홈페이지에서 가입하면 출시 소식을 받을 수 있습니다.
+요금: 기본 기능은 무료(관리 사진·영상 5,000개, 인생 챕터 30개까지). 유료 구독은 월 3,000원(매달 자동 결제, 언제든 해지) 또는 연 28,000원(1회 결제, 자동 갱신 없음)이며, 사진 5,000개 초과·챕터 31개째 이후·챕터 외부 공유·폰 앱 자동 동기화가 추가됩니다.
 운영: 스콜레에듀케이션 · 문의: gieoksoop@gmail.com
 
 ## 무엇을 하나요
@@ -32,7 +33,7 @@
 ## 주요 페이지
 - [서비스 소개](https://gieoksoop.com/): 기억숲이 무엇이고 왜 쓰는지, 주요 기능, 자주 묻는 질문
 - [사용가이드](https://gieoksoop.com/guide): 폴더 연결부터 챕터·영상 만들기까지 사용 방법
-- [PC앱 다운로드](https://gieoksoop.com/download): Windows·macOS 앱 출시 안내
-- [구독결제](https://gieoksoop.com/pricing): 요금과 결제·해지·환불 안내
+- [PC앱 다운로드](https://gieoksoop.com/download): Windows·macOS 앱 출시 안내(출시 준비 중, 가입 시 출시 알림)
+- [구독결제](https://gieoksoop.com/pricing): 무료/월간 3,000원/연간 28,000원 요금과 결제·해지·환불 안내
 - [개인정보처리방침](https://gieoksoop.com/privacy)
 - [이용약관](https://gieoksoop.com/terms)
