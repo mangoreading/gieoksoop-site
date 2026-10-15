@@ -291,7 +291,7 @@
   }
 
   const PLAN_DISPLAY = {
-    monthly: { issueName: '기억숲 월간 (매월 3,000원)', korean: '월간', amount: 3000, months: 1 },
+    monthly: { issueName: '기억숲 월간구독', korean: '월간', amount: 3000, months: 1 },
     annual: { issueName: '기억숲 구독 카드 등록 (연간)', korean: '연간', amount: 28000, months: 12 },
   };
 
@@ -715,6 +715,9 @@
         billingKeyMethod: 'CARD',
         issueId: 'bk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
         issueName: PLAN_DISPLAY[plan].issueName,
+        // PG(이니시스) 회신: 카드 등록창에 결제금액 표시용. 금액 표시 전용이며 실제 결제 금액은 서버 스케줄러가 처리
+        displayAmount: PLAN_DISPLAY[plan].amount,
+        currency: 'KRW',
         customer: {
           customerId: user.uid,
           fullName: fullName,
