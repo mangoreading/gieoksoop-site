@@ -420,7 +420,7 @@
     if (/유효\s*기간|expir/i.test(msg)) return '카드 유효기간을 다시 확인해 주세요.';
     if (/한도|잔액|insufficient/i.test(msg)) return '카드 한도 또는 잔액을 확인해 주세요.';
     if (/분실|도난|정지|blocked|lost|stolen/i.test(msg)) return '카드사에서 거래를 제한하고 있습니다. 카드사에 문의해 주세요.';
-    if (/인증/i.test(msg)) return '본인 인증에 실패했습니다. 다시 시도해 주세요.';
+    if (/인증/i.test(msg)) return '본인 인증에 실패했습니다. 다시 시도해 주세요.' + ' (사유: ' + msg.slice(0, 120) + ')';
     if (/이미 구독/i.test(msg) || /already_subscribed/i.test(msg)) return '이미 구독 중입니다. 새로고침한 뒤 다시 시도해 주세요.';
     // 위에서 분류하지 못한 사유는 원문 일부를 함께 보여준다(원인 파악·문의 응대용).
     return '카드사 정책에 따라 결제가 거절되었습니다. 다른 카드로 시도하거나 카드사에 문의해 주세요.' + ' (사유: ' + msg.slice(0, 120) + ')';
@@ -731,6 +731,7 @@
         return;
       }
       if (issueResponse.code) {
+        console.error('[billing-key issue failed]', JSON.stringify(issueResponse));
         const retry = await showRetryableError(friendlyBillingError(issueResponse.message || issueResponse.code), {
           title: '카드 등록 실패',
         });
